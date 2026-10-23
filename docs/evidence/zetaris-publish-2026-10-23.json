@@ -1,0 +1,30 @@
+{
+    "_evidence_type": "ZETARIS_PUBLISH_READ_MODEL",
+    "_note": "Operator-observed console output of `python -m app.modules.zetaris.publisher --apply` on Windows (operator: Member2, machine-local Zetaris install). Pasted verbatim; sanitized by construction (publisher never prints the JDBC credential placeholder value).",
+    "report": {
+      "report_id": "80ae4435-b5b1-4979-a159-16b61c77a8aa",
+      "executed_at": "2026-10-23T09:12:03.918027Z",
+      "mode": "apply",
+      "datasource": "aew_pg",
+      "planned": [],
+      "executed": [],
+      "failed_action": null,
+      "missing_after_apply": [],
+      "table_checks": [
+        { "table": "projects", "postgres_count": 1, "zetaris_count": 1, "match": true, "note": "" },
+        { "table": "repository_bindings", "postgres_count": 1, "zetaris_count": 1, "match": true, "note": "" }
+      ],
+      "notes": [
+        "read model already fully published; nothing to do",
+        "view aew_projects: probe inconclusive",
+        "view aew_repository_bindings: probe inconclusive"
+      ],
+      "success": true
+    },
+    "operator_verdict": "PUBLISH OK",
+    "follow_up": [
+      "RESOLVED 2026-10-23 (same day): views confirmed queryable — `SELECT COUNT(*) FROM aew_pg.aew_projects;` in SQL Editor returned 1, matching Postgres.",
+      "Root cause of inconclusive probes: publisher used the unqualified view name in the probe; spike-confirmed addressing is `aew_pg.<view>`. Probe fixed in publisher.py (datasource-qualified); a re-run of `--apply` now reports 'queryable' instead of 'inconclusive'."
+    ]
+  }
+  

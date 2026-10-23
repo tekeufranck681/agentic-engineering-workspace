@@ -1,0 +1,28 @@
+# PROVISIONAL local development stack for the M2 slice.
+#
+# Only the product PostgreSQL for now (ENG-009 will own the definitive
+# version of this file). Zetaris runs in its own separate compose project and
+# must never be added here. Start with:  docker compose -f infra/docker-compose.yml up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aew}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aew}
+      POSTGRES_DB: ${POSTGRES_DB:-aew}
+    ports:
+      # Host port is configurable: 5432 is often already taken on developer
+      # machines (native installs, other stacks). DATABASE_URL must match.
+      - "127.0.0.1:${AEW_DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

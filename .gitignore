@@ -1,0 +1,29 @@
+# Secrets — never commit real values
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Caches and test artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local SQLite databases
+*.db
+*.sqlite3
+
+# Evidence receipts (raw evidence stays out of git by pack rule)
+evidence/raw/
+
+# OS noise
+.DS_Store
+Thumbs.db
