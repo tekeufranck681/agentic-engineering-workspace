@@ -183,8 +183,13 @@ def test_alembic_0004_chain_upgrades_downgrades_and_reapplies(tmp_path, monkeypa
     assert "evidence_items" in tables
     fks = inspect(engine).get_foreign_keys("tool_executions")
     assert any(fk["referred_table"] == "evidence_items" for fk in fks)
+    # Head moves as later migrations land (0004 -> 0005 -> ...); assert the
+    # database is at whatever the chain's current head declares, not a number.
+    from alembic.script import ScriptDirectory
+
+    expected_head = ScriptDirectory.from_config(config).get_current_head()
     head_rev = engine.connect().execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert head_rev == "0004"
+    assert head_rev == expected_head
 
     command.downgrade(config, "base")
     tables = inspect(engine).get_table_names()
