@@ -3,10 +3,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from app.core.db import get_session
 from app.domain.errors import TransitionError
-from app.domain.fakes import InMemoryRepository, FakeLLM
+from app.domain.fakes import FakeLLM
 from app.modules.architecture.service import ArchitectureService
+from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
 from app.modules.architecture.schemas import (
     ArchitectureGenerateRequest,
     ArchitectureGenerateResponse,
@@ -21,14 +24,16 @@ from app.modules.architecture.schemas import (
 router = APIRouter(prefix="/architecture", tags=["architecture"])
 
 
-def get_service() -> ArchitectureService:
-    """Dependency that builds a service with in-memory repo and fake LLM.
+def get_service(session: Session = Depends(get_session)) -> ArchitectureService:
+    """Dependency: REAL persistence on the request session; LLM seam pending M3.
 
-    M2 replaces InMemoryRepository with a real RepositoryPort.
-    M3 replaces FakeLLM with a real LLMPort (ENG-008).
+    RepositoryPort is M2's SqlAlchemyArtifactRepository (0005 tables). M3 still
+    replaces FakeLLM with the architecture capability port (ENG-008/028);
+    until then, generation endpoints answer 500 unless tests override this
+    dependency — honest, instead of silently pretending model output exists.
     """
     llm = FakeLLM(responses={})
-    repo = InMemoryRepository()
+    repo = SqlAlchemyArtifactRepository(session)
     return ArchitectureService(llm=llm, repo=repo)
 
 
