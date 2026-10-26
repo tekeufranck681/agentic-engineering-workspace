@@ -7,3 +7,4 @@ pydantic-settings==2.*
 httpx==0.28.*
 pytest==8.*
 psycopg[binary]==3.2.*
+e2b==2.*
