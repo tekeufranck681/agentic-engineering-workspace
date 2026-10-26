@@ -20,6 +20,13 @@ class CapabilityError(Exception):
         self.invocation_id = invocation_id
 
 
+class CapabilityMemoryError(CapabilityError):
+    """The contract recalls project memory and the engine could not answer: fail closed."""
+
+    kind = "capability_memory_unavailable"
+    retryable = True
+
+
 class CapabilityNotFoundError(CapabilityError):
     """No contract is registered under that name."""
 

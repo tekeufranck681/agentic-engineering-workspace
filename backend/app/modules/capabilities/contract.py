@@ -50,6 +50,10 @@ class CapabilityContract(BaseModel):
 
     retry_backoff_seconds: float = Field(default=2.0, ge=0)
 
+    recalls_memory: bool = False
+    """Recall the project's lessons from H-MEM into the prompt before the model call
+    (ENG-018). Fails closed when the engine is unreachable."""
+
     @field_validator("name")
     @classmethod
     def name_is_dotted_lowercase(cls, value: str) -> str:
@@ -73,6 +77,9 @@ class InvocationContext(BaseModel):
     step_id: str | None = None
     input_refs: list[str] = Field(default_factory=list)
     """Artifact ids and versions the inputs came from, e.g. REQ-014@v2, AC-014-02."""
+
+    memory_query: str | None = None
+    """What to recall from project memory; defaults to the prompt's subject."""
 
 
 class CancellationToken:
