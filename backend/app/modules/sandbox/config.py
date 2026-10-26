@@ -27,6 +27,9 @@ class SandboxSettings(BaseSettings):
 
     command_timeout_seconds: int = Field(default=120, ge=5, le=1800)
 
+    max_output_chars: int = Field(default=20_000, ge=1_000, le=1_000_000)
+    """Per-stream cap on captured command output; the tail is kept."""
+
     @classmethod
     def from_env(cls) -> "SandboxSettings":
         try:
