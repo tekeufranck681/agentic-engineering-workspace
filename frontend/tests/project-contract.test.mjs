@@ -4,6 +4,9 @@ import {
   parseProject,
   parseProjects,
   isProjectId,
+  parseProjectCreate,
+  bindingFromUrl,
+  parseBinding,
 } from "../src/lib/api/project-contract.ts";
 
 const project = {
@@ -40,4 +43,60 @@ test("rejects uncontracted statuses, missing fields and malformed dates or IDs",
   assert.throws(() => parseProjects({ projects: [project] }));
   assert.throws(() => parseProjects([project, {}]));
   assert.equal(isProjectId("preview"), false);
+});
+
+test("project creation validates the existing backend contract", () => {
+  assert.deepEqual(
+    parseProjectCreate({ name: "  Test project  ", description: " " }),
+    { name: "Test project", description: null },
+  );
+  for (const value of [
+    { name: " " },
+    { name: "x".repeat(201) },
+    { name: "ok", description: "x".repeat(5001) },
+  ])
+    assert.throws(() => parseProjectCreate(value));
+});
+test("repository forms accept GitHub identities without embedded credentials or invented SHAs", () => {
+  const binding = bindingFromUrl(
+    "https://github.com/example/demo-target.git",
+    "main",
+    "",
+  );
+  assert.equal(binding.base_sha, null);
+  assert.equal(binding.html_url, "https://github.com/example/demo-target");
+  assert.throws(() =>
+    bindingFromUrl("https://token@github.com/example/demo-target", "main", ""),
+  );
+  assert.throws(() =>
+    bindingFromUrl(
+      "https://github.com.evil.test/example/demo-target",
+      "main",
+      "",
+    ),
+  );
+  assert.throws(() =>
+    bindingFromUrl(
+      "https://github.com/example/demo-target/tree/main",
+      "main",
+      "",
+    ),
+  );
+  assert.throws(() =>
+    bindingFromUrl(
+      "https://github.com/example/demo-target",
+      "main",
+      "not-a-sha",
+    ),
+  );
+  assert.throws(() =>
+    parseBinding({
+      ...binding,
+      id: project.id,
+      project_id: project.id,
+      full_name: "different/repo",
+      status: "active",
+      bound_at: project.created_at,
+    }),
+  );
 });

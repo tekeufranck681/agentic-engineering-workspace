@@ -14,3 +14,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Commit and push task branches only. Do not push to main, merge branches, or force-push.
 - The user creates and merges pull requests manually in GitHub. Do not create or merge PRs from the CLI, API, or browser automation.
 - If main advances while a task is in progress, report the new base and coordinate the update; do not merge it into the task branch automatically.
+
+## API scope and organization (user instruction)
+
+Add API integration only when the assigned ENG task explicitly requires it. Use `/home/tekeu-franck/Desktop/linkdem/frontend` as the implementation reference: shared API client, typed feature services, Zustand stores, then UI components. Adapt to this project's actual contracts; do not copy Linkdem authentication or response envelopes that this backend does not implement. Keep network transport out of components.
+
+For every review handoff, provide a ready-to-copy PR title and description. Clearly distinguish partial frontend slices from completed ENG tasks and name backend blockers. Preserve a reproducible review setup for screenshots; do not depend only on unexplained temporary services.

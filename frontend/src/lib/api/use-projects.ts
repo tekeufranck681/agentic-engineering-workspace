@@ -1,81 +1,61 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { parseProject, parseProjects } from "./project-contract";
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-function useProjectQuery<T>(path: string | null, parse: (value: unknown) => T) {
-  const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<{
-    key: string;
-    data: T | null;
-    error: ApiError | null;
-  }>({ key: "", data: null, error: null });
-  const key = `${path}:${attempt}`;
+import { useCallback, useEffect } from "react";
+import {
+  useProjectsStore,
+  emptyProject,
+  emptyPage,
+  emptyBinding,
+} from "@/stores/projectsStore";
+export { ApiError } from "./client";
+export function useProjects(offset = 0, enabled = true) {
+  const state = useProjectsStore((store) => store.pages[offset] ?? emptyPage);
+  const load = useProjectsStore((store) => store.fetchProjects);
   useEffect(() => {
-    if (!path) return;
-    const controller = new AbortController();
-    async function load() {
-      try {
-        const response = await fetch(path!, {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        const body: unknown = await response.json();
-        if (!response.ok) {
-          const message =
-            typeof body === "object" &&
-            body !== null &&
-            "message" in body &&
-            typeof body.message === "string"
-              ? body.message
-              : "Could not load project data. Try again.";
-          throw new ApiError(response.status, message);
-        }
-        const data = parse(body);
-        if (!controller.signal.aborted) setResult({ key, data, error: null });
-      } catch (error) {
-        if (!controller.signal.aborted)
-          setResult({
-            key,
-            data: null,
-            error:
-              error instanceof ApiError
-                ? error
-                : new ApiError(
-                    0,
-                    "Could not load project data. Check your connection and try again.",
-                  ),
-          });
-      }
-    }
-    void load();
-    return () => controller.abort();
-  }, [path, key, parse]);
-  const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  const current = result.key === key;
+    if (enabled) void load(offset);
+  }, [enabled, offset, load, state.fetched]);
+  const retry = useCallback(() => {
+    void load(offset, true);
+  }, [offset, load]);
   return {
-    data: current ? result.data : null,
-    error: current ? result.error : null,
-    loading: path !== null && !current,
+    data: enabled ? state.data : null,
+    error: enabled ? state.error : null,
+    loading: enabled && (!state.fetched || state.loading),
     retry,
   };
 }
-export function useProjects(offset = 0, enabled = true) {
-  return useProjectQuery(
-    enabled ? `/api/projects?offset=${offset}` : null,
-    parseProjects,
-  );
-}
 export function useProject(id: string | null) {
-  return useProjectQuery(
-    id ? `/api/projects/${encodeURIComponent(id)}` : null,
-    parseProject,
+  const state = useProjectsStore((store) =>
+    id ? (store.projects[id] ?? emptyProject) : emptyProject,
   );
+  const load = useProjectsStore((store) => store.fetchProject);
+  useEffect(() => {
+    if (id) void load(id);
+  }, [id, load, state.fetched]);
+  const retry = useCallback(() => {
+    if (id) void load(id, true);
+  }, [id, load]);
+  return {
+    data: state.data,
+    error: state.error,
+    loading: !!id && (!state.fetched || state.loading),
+    retry,
+  };
+}
+export function useRepositoryBinding(id: string | null) {
+  const state = useProjectsStore((store) =>
+    id ? (store.bindings[id] ?? emptyBinding) : emptyBinding,
+  );
+  const load = useProjectsStore((store) => store.fetchBinding);
+  useEffect(() => {
+    if (id) void load(id);
+  }, [id, load, state.fetched]);
+  const retry = useCallback(() => {
+    if (id) void load(id, true);
+  }, [id, load]);
+  return {
+    data: state.data,
+    error: state.error,
+    loading: !!id && (!state.fetched || state.loading),
+    retry,
+  };
 }

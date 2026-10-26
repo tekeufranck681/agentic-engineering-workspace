@@ -1,14 +1,37 @@
+import Link from "next/link";
+import { OverviewWorkspace } from "@/features/overview/overview-workspace";
+import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { workspaces } from "@/lib/workspaces";
 import { StatusBadge } from "@/components/shared/status-badge";
 export default async function WorkspacePage({
   params,
 }: {
-  params: Promise<{ workspace: string }>;
+  params: Promise<{ workspace: string; projectId: string }>;
 }) {
-  const { workspace } = await params;
+  const { workspace, projectId } = await params;
   const section = workspaces.find((item) => item.slug === workspace);
   if (!section) notFound();
+  if (workspace === "overview" && projectId !== "preview")
+    return <OverviewWorkspace projectId={projectId} />;
+  if (workspace === "overview")
+    return (
+      <div className="workspace-page">
+        <h1>Overview</h1>
+        <p className="page-description">
+          This is the shell preview. Open or create a saved project to inspect
+          its repository context.
+        </p>
+        <div className="state-actions">
+          <Button asChild>
+            <Link href="/projects">Browse projects</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/projects/new">Create project</Link>
+          </Button>
+        </div>
+      </div>
+    );
   return (
     <div className="workspace-page">
       <div className="page-heading">
