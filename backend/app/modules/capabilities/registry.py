@@ -78,7 +78,7 @@ DEFAULT_CONTRACTS = (
     ),
     CapabilityContract(
         name=ARCHITECTURE_DESIGN,
-        version="1.0.0",
+        version="1.1.0",
         description="Propose the architecture change, ADR and engineering contract for locked requirements.",
         instructions=(
             "You are the architecture capability of an autonomous software-engineering "
@@ -89,6 +89,8 @@ DEFAULT_CONTRACTS = (
         allowed_tools=(*_READ_TOOLS, "engineering_data.query"),
         forbidden_tools=_NOT_FOR_DESIGN_CAPABILITIES,
         failure_modes=("requirement not locked", "conflicting ADR"),
+        # 1.1.0: verified lessons from earlier runs reach the design (ENG-018).
+        recalls_memory=True,
     ),
     CapabilityContract(
         name=PLANNING_PLAN,

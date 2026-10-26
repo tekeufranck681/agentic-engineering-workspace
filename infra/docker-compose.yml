@@ -1,8 +1,9 @@
 # PROVISIONAL local development stack for the M2 slice.
 #
-# Only the product PostgreSQL for now (ENG-009 will own the definitive
-# version of this file). Zetaris runs in its own separate compose project and
-# must never be added here. Start with:  docker compose -f infra/docker-compose.yml up -d
+# The product PostgreSQL and the H-MEM engine sidecar (ENG-018) for now
+# (ENG-009 will own the definitive version of this file). Zetaris runs in its
+# own separate compose project and must never be added here. Start with:
+#   docker compose -f infra/docker-compose.yml up -d
 
 services:
   db:
@@ -24,5 +25,19 @@ services:
       timeout: 3s
       retries: 30
 
+  # Meterless H-MEM engine (ENG-018): the vendored official reference behind a
+  # thin HTTP API; the image build runs the engine's conformance suite. The
+  # backend reaches it at HMEM_BASE_URL. Single writer: never run two instances
+  # on the same volume. Holds no credentials.
+  hmem:
+    build: ../services/hmem
+    image: aew-hmem:dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HMEM_PORT:-8099}:8099"
+    volumes:
+      - hmemdata:/data
+
 volumes:
   pgdata:
+  hmemdata:

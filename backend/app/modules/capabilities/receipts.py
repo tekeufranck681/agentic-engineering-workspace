@@ -3,14 +3,17 @@
 A receipt ties a capability result to its provenance: contract name and
 version, the caller's input artifact refs and run attribution, SHA-256 of the
 prompt and of the validated output, every model call made (gateway call ids
-and the models that answered) and how many repairs and retries it took. No
-prompt or output text is kept.
+and the models that answered), how many repairs and retries it took and, for
+contracts that recall memory, which H-MEM memories reached the prompt and why.
+No prompt or output text is kept.
 """
 
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.modules.memory.models import MemoryRecallEvidence
 
 
 class CapabilityInvocationReceipt(BaseModel):
@@ -35,3 +38,6 @@ class CapabilityInvocationReceipt(BaseModel):
     retries: int = Field(ge=0)
     duration_ms: int = Field(ge=0)
     started_at: datetime
+    memory: MemoryRecallEvidence | None = Field(
+        default=None, description="H-MEM recall for contracts that recall memory; None otherwise"
+    )

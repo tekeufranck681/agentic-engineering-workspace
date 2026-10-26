@@ -13,6 +13,8 @@ CapabilityPort, the LLMPort that M4's services use). Either way the runtime
   engineering correction (architecture §53);
 * enforces the contract timeout and checks the CancellationToken around every
   model call;
+* for contracts that recall memory, adds the project's relevant H-MEM lessons
+  to the prompt first, and fails closed when the engine cannot answer;
 * records one CapabilityInvocationReceipt per invocation.
 
 Nothing loops unbounded: at most 1 + max_repairs + max_retries model calls.
@@ -35,11 +37,16 @@ from app.modules.capabilities.errors import (
     CapabilityCancelledError,
     CapabilityError,
     CapabilityInputError,
+    CapabilityMemoryError,
     CapabilityOutputError,
     CapabilityTimeoutError,
 )
 from app.modules.capabilities.receipts import CapabilityInvocationReceipt
 from app.modules.capabilities.registry import CapabilityRegistry
+from app.modules.memory.errors import AgentMemoryError
+from app.modules.memory.models import MemoryRecallEvidence
+from app.modules.memory.provider import AgentMemoryProvider
+from app.modules.memory.recall import recall_into_prompt
 from app.modules.model_gateway.errors import ModelGatewayError, StructuredOutputError
 from app.modules.model_gateway.gateway import ModelGateway, summarize_validation_error
 from app.modules.model_gateway.receipts import InMemoryReceiptSink, ModelCallReceipt, ReceiptSink
@@ -83,11 +90,17 @@ class CapabilityRuntime:
         registry: CapabilityRegistry,
         sink: ReceiptSink | None = None,
         sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+        memory: AgentMemoryProvider | None = None,
+        recall_top_n: int = 5,
+        recall_threshold: float = 0.35,
     ) -> None:
         self._gateway = gateway
         self.registry = registry
         self.receipts = sink if sink is not None else InMemoryReceiptSink()
         self._sleep = sleep
+        self._memory = memory
+        self._recall_top_n = recall_top_n
+        self._recall_threshold = recall_threshold
 
     def port(self, capability: str, context: InvocationContext | None = None) -> "CapabilityPort":
         """An LLMPort bound to one registered capability."""
@@ -136,6 +149,7 @@ class CapabilityRuntime:
     ) -> CapabilityResult[T]:
         context = context or InvocationContext()
         progress = _Progress()
+        memory: MemoryRecallEvidence | None = None
         invocation_id = str(uuid.uuid4())
         started_at, started = datetime.now(timezone.utc), time.monotonic()
 
@@ -160,11 +174,14 @@ class CapabilityRuntime:
                 retries=progress.retries,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 started_at=started_at,
+                memory=memory,
             )
             self._record(receipt)
             return receipt
 
         try:
+            if contract.recalls_memory:
+                prompt, memory = await self._recall(contract, prompt, context, invocation_id)
             value = await asyncio.wait_for(
                 self._attempts(contract, prompt, schema, cancel, progress),
                 timeout=contract.timeout_seconds,
@@ -226,11 +243,62 @@ class CapabilityRuntime:
             _raise_if_cancelled(cancel, contract)  # a cancelled invocation discards a late result
             return result.value
 
+    async def _recall(
+        self, contract: CapabilityContract, prompt: str, context: InvocationContext, invocation_id: str
+    ) -> tuple[str, MemoryRecallEvidence]:
+        """Add the project's relevant H-MEM lessons to the prompt; fail closed if the engine cannot answer."""
+        if context.project_id is None:
+            evidence = MemoryRecallEvidence(status="skipped", reason="no project in the invocation context")
+        elif self._memory is None:
+            raise CapabilityMemoryError(
+                f"{contract.name} v{contract.version} recalls project memory, but no memory provider is configured",
+                capability=contract.name,
+            )
+        else:
+            try:
+                prompt, evidence = await asyncio.to_thread(
+                    recall_into_prompt,
+                    self._memory,
+                    context.project_id,
+                    prompt,
+                    query=context.memory_query,
+                    top_n=self._recall_top_n,
+                    threshold=self._recall_threshold,
+                )
+            except AgentMemoryError as exc:
+                error = CapabilityMemoryError(
+                    f"{contract.name} v{contract.version}: project memory (H-MEM) did not answer, "
+                    f"so the capability does not run without it: {exc}",
+                    capability=contract.name,
+                )
+                error.retryable = exc.retryable
+                raise error from exc
+        if evidence.status == "recalled":
+            logger.info(
+                "capability %s v%s invocation %s: H-MEM recalled %s for project %s into the prompt (%s)",
+                contract.name,
+                contract.version,
+                invocation_id,
+                ", ".join(f"{m.memory_id} relevance={m.relevance:.3f} from {m.source}" for m in evidence.memories),
+                evidence.project_id,
+                evidence.reason,
+            )
+        else:
+            logger.info(
+                "capability %s v%s invocation %s: no H-MEM lesson added (%s: %s)",
+                contract.name,
+                contract.version,
+                invocation_id,
+                evidence.status,
+                evidence.reason,
+            )
+        return prompt, evidence
+
     def _record(self, receipt: CapabilityInvocationReceipt) -> None:
         self.receipts.record(receipt)
         logger.info(
             "capability %s v%s invocation %s outcome=%s%s attempts=%s repairs=%s retries=%s "
-            "answered_by=%s duration_ms=%s",
+            "answered_by=%s memory=%s duration_ms=%s",
             receipt.capability,
             receipt.capability_version,
             receipt.invocation_id,
@@ -240,6 +308,7 @@ class CapabilityRuntime:
             receipt.repairs,
             receipt.retries,
             ",".join(receipt.answered_by) or None,
+            _memory_summary(receipt.memory),
             receipt.duration_ms,
         )
 
@@ -257,6 +326,13 @@ class CapabilityPort:
     async def generate_structured(self, prompt: str, schema: type[T]) -> T:
         result = await self._runtime.run_prompt(self.capability, prompt, schema, context=self._context)
         return result.value
+
+
+def _memory_summary(memory: MemoryRecallEvidence | None) -> str | None:
+    if memory is None:
+        return None
+    ids = ",".join(m.memory_id for m in memory.memories)
+    return f"{memory.status}:{ids}" if ids else memory.status
 
 
 def _render(contract: CapabilityContract, inputs: Mapping[str, Any] | BaseModel) -> str:
