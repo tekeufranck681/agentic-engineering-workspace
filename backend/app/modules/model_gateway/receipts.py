@@ -11,9 +11,11 @@ model-invocation persistence agreed with M2 exists (DISC-M3-03).
 import threading
 from collections import deque
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Generic, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
+
+R = TypeVar("R", bound=BaseModel)
 
 
 class ModelCallReceipt(BaseModel):
@@ -51,18 +53,18 @@ class ReceiptSink(Protocol):
     def record(self, receipt: ModelCallReceipt) -> None: ...
 
 
-class InMemoryReceiptSink:
+class InMemoryReceiptSink(Generic[R]):
     """Keeps the most recent receipts in process memory (thread-safe)."""
 
     def __init__(self, maxlen: int = 500) -> None:
-        self._items: deque[ModelCallReceipt] = deque(maxlen=maxlen)
+        self._items: deque[R] = deque(maxlen=maxlen)
         self._lock = threading.Lock()
 
-    def record(self, receipt: ModelCallReceipt) -> None:
+    def record(self, receipt: R) -> None:
         with self._lock:
             self._items.append(receipt)
 
-    def recent(self, limit: int = 50) -> list[ModelCallReceipt]:
+    def recent(self, limit: int = 50) -> list[R]:
         """Newest first."""
         with self._lock:
             items = list(self._items)

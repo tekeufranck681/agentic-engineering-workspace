@@ -1,4 +1,5 @@
-"""Live proof that the application answers through ModelGateway and Nightshift (ENG-008).
+"""Live proof that the application answers through the capability runtime,
+ModelGateway and Nightshift (ENG-008, ENG-028).
 
 Usage, on the backend host with NIGHTSHIFT_* in the local .env:
 
@@ -7,11 +8,12 @@ Usage, on the backend host with NIGHTSHIFT_* in the local .env:
 
 It POSTs the canonical demo brief to the real FastAPI app's
 /requirements/analyze (in-process ASGI client). M4's requirements service gets
-its model from the gateway, so the request runs app -> gateway -> Nightshift ->
-model. ``--lane`` pins the lane of requirements.analyze_input for this run,
-e.g. a Nemotron model for the NVIDIA award path. Evidence lists every model
-call receipt and the requirements returned; prompts, raw replies and the token
-are never written.
+its model through the capability runtime, so the request runs app ->
+capability runtime -> gateway -> Nightshift -> model. ``--lane`` pins the lane
+of requirements.analyze_input for this run, e.g. a Nemotron model for the
+NVIDIA award path. Evidence lists the capability invocation and every model
+call receipt plus the requirements returned; prompts, raw replies and the
+token are never written.
 
 Exit code 0 when the request succeeded with an attributed, non-cached model
 reply, 1 for configuration problems and 2 otherwise.
@@ -28,7 +30,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.modules.model_gateway.api import REQUIREMENTS_CAPABILITY, get_model_gateway
+from app.modules.capabilities.api import get_capability_runtime
+from app.modules.capabilities.receipts import CapabilityInvocationReceipt
+from app.modules.capabilities.registry import REQUIREMENTS_ANALYZE as REQUIREMENTS_CAPABILITY
+from app.modules.model_gateway.api import get_model_gateway
 from app.modules.model_gateway.errors import ModelConfigError
 from app.modules.model_gateway.receipts import ModelCallReceipt
 from app.modules.nightshift.config import NightshiftSettings
@@ -41,10 +46,18 @@ DEMO_BRIEF = (
 
 
 def render_markdown(
-    *, lane: str, base_url: str, status: int, body: dict, receipts: list[ModelCallReceipt], passed: bool
+    *,
+    lane: str,
+    base_url: str,
+    status: int,
+    body: dict,
+    invocations: list[CapabilityInvocationReceipt],
+    receipts: list[ModelCallReceipt],
+    passed: bool,
 ) -> str:
     lines = [
-        "# POWER evidence: application request through ModelGateway and Nightshift (ENG-008)",
+        "# POWER evidence: application request through the capability runtime, ModelGateway "
+        "and Nightshift (ENG-008, ENG-028)",
         "",
         "*(per v2.0 evidence delta: timestamp, sanitized request, observed result, component, storage pointer)*",
         "",
@@ -52,7 +65,7 @@ def render_markdown(
         "* **Command:** `python -m app.modules.model_gateway.smoke` (backend host)",
         "* **Application request:** `POST /requirements/analyze` on the FastAPI app (`app.main.create_app`, "
         "in-process ASGI client) with the canonical demo brief. M4's requirements service gets its model "
-        f"from the gateway as capability `{REQUIREMENTS_CAPABILITY}`.",
+        f"through the capability runtime as capability `{REQUIREMENTS_CAPABILITY}`.",
         f"* **Provider:** Nightshift at `{base_url}`; lane for `{REQUIREMENTS_CAPABILITY}`: `{lane}`",
         "* **Sanitization:** receipts only. Prompts and replies are recorded as SHA-256 and length; the "
         "file is checked for the runtime token before saving.",
@@ -75,6 +88,22 @@ def render_markdown(
     else:
         lines.append(f"* **Error:** `{json.dumps(body.get('error', body))[:300]}`")
 
+    lines += [
+        "",
+        "## Capability invocations",
+        "",
+        "| Capability | Version | Outcome | Model calls | Repairs | Retries | Answered by | Duration | Output SHA-256 |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for invocation in invocations:
+        outcome = invocation.outcome + (f" ({invocation.error_kind})" if invocation.error_kind else "")
+        answered = ", ".join(f"`{model}`" for model in invocation.answered_by) or "none"
+        digest = f"`{invocation.output_sha256[:16]}…`" if invocation.output_sha256 else ""
+        lines.append(
+            f"| `{invocation.capability}` | {invocation.capability_version} | {outcome} | "
+            f"{invocation.attempts} | {invocation.repairs} | {invocation.retries} | {answered} | "
+            f"{invocation.duration_ms} ms | {digest} |"
+        )
     lines += [
         "",
         "## Model call receipts",
@@ -100,7 +129,9 @@ def render_markdown(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Application request through ModelGateway (ENG-008)")
+    parser = argparse.ArgumentParser(
+        description="Application request through the capability runtime and ModelGateway (ENG-008, ENG-028)"
+    )
     parser.add_argument("--lane", help=f"pin the lane or model id of {REQUIREMENTS_CAPABILITY} for this run")
     parser.add_argument("--evidence-out", type=Path, help="write POWER evidence markdown here")
     args = parser.parse_args(argv)
@@ -122,11 +153,17 @@ def main(argv: list[str] | None = None) -> int:
             "/requirements/analyze", json={"project_id": str(uuid.uuid4()), "brief": DEMO_BRIEF}
         )
     body = response.json()
+    invocations = list(reversed(get_capability_runtime().receipts.recent()))
     receipts = list(reversed(gateway.receipts.recent()))
     live = [r for r in receipts if r.outcome == "ok" and r.answered_by and not r.from_cache]
     passed = response.status_code == 200 and bool(body.get("requirements")) and bool(live)
 
     print(f"HTTP {response.status_code}: {len(body.get('requirements', []))} requirements")
+    for invocation in invocations:
+        print(
+            f"  capability {invocation.capability} v{invocation.capability_version}: {invocation.outcome}, "
+            f"{invocation.attempts} call(s), {invocation.repairs} repair(s), {invocation.retries} retr(ies)"
+        )
     for receipt in receipts:
         print(
             f"  {receipt.outcome:5} {receipt.requested_model} -> {receipt.answered_by} "
@@ -136,7 +173,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.evidence_out is not None:
         text = render_markdown(
-            lane=lane, base_url=base_url, status=response.status_code, body=body, receipts=receipts, passed=passed
+            lane=lane,
+            base_url=base_url,
+            status=response.status_code,
+            body=body,
+            invocations=invocations,
+            receipts=receipts,
+            passed=passed,
         )
         if token in text:  # defense in depth; should be impossible
             print("REFUSED: evidence text contains the runtime token; nothing written")

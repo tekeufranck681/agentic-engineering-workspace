@@ -1,9 +1,11 @@
 """ModelGateway tests (ENG-008) without a live runtime.
 
-Routing, redacted receipts, structured output, typed failures and the FastAPI
-wiring. Most tests drive a scripted provider; the Nightshift adapter runs over
+Routing, redacted receipts, structured output, typed failures and health. Most
+tests drive a scripted provider; the Nightshift adapter runs over
 httpx.MockTransport so error translation and attribution are checked end to
-end. Live proof: tests/integration/test_model_gateway_live.py.
+end. The API wiring is tested with the capability runtime that now fronts the
+gateway (test_capability_runtime.py). Live proof:
+tests/integration/test_model_gateway_live.py.
 """
 
 import json
@@ -11,14 +13,12 @@ import uuid
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import BaseModel, SecretStr
 
 from app.domain.fakes import InMemoryRepository
 from app.domain.ports import LLMPort
-from app.main import create_app
-from app.modules.model_gateway import api
-from app.modules.model_gateway.api import REQUIREMENTS_CAPABILITY, build_model_gateway, requirements_model
+from app.modules.capabilities.registry import REQUIREMENTS_ANALYZE
+from app.modules.model_gateway.api import build_model_gateway
 from app.modules.model_gateway.config import ModelGatewaySettings
 from app.modules.model_gateway.errors import (
     ModelAuthError,
@@ -30,44 +30,11 @@ from app.modules.model_gateway.errors import (
     StructuredOutputError,
 )
 from app.modules.model_gateway.gateway import ModelGateway, extract_json
-from app.modules.model_gateway.provider import ProviderReply
 from app.modules.nightshift.config import NightshiftSettings
 from app.modules.requirements.service import RequirementsService
+from tests.model_fakes import PINNED, ScriptedProvider
 
 TOKEN = "ns-test-token-0123456789"
-PINNED = "nvidia/nemotron-test"
-
-
-class ScriptedProvider:
-    """Returns queued replies (or raises queued errors) and records each call."""
-
-    name = "scripted"
-
-    def __init__(self, *replies: str | Exception) -> None:
-        self._replies = list(replies)
-        self.calls: list[dict] = []
-
-    def complete(self, model, messages, *, max_tokens=None, temperature=None) -> ProviderReply:
-        self.calls.append(
-            {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature}
-        )
-        reply = self._replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return ProviderReply(
-            content=reply,
-            answered_by=PINNED,
-            attribution_source="runtime receipt",
-            runtime_receipt_id="rcpt-1",
-            routed_provider="nvidia",
-            prompt_tokens=10,
-            completion_tokens=5,
-            finish_reason="stop",
-            latency_ms=7,
-        )
-
-    def close(self) -> None:
-        pass
 
 
 def settings(**overrides) -> ModelGatewaySettings:
@@ -91,7 +58,7 @@ class Verdict(BaseModel):
 def test_capabilities_route_to_their_lane_or_the_default():
     routing = settings(lanes={"evaluation.evaluate": PINNED})
     assert routing.lane_for("evaluation.evaluate") == PINNED
-    assert routing.lane_for(REQUIREMENTS_CAPABILITY) == "meterless/auto"
+    assert routing.lane_for(REQUIREMENTS_ANALYZE) == "meterless/auto"
     assert routing.lane_for(None) == "meterless/auto"
 
 
@@ -148,6 +115,15 @@ async def test_structured_output_is_validated_against_the_schema():
     assert (receipt.structured_schema, receipt.structured_valid, receipt.outcome) == ("Verdict", True, "ok")
 
 
+async def test_structured_call_puts_capability_instructions_first_and_returns_the_receipt():
+    gateway, provider = make_gateway('{"ok": true, "reason": "fine"}')
+    result = await gateway.structured_call("judge this", Verdict, instructions="You judge claims.")
+
+    assert result.value.ok is True and result.receipt.structured_valid is True
+    system = provider.calls[0]["messages"][0].content
+    assert system.startswith("You judge claims.") and "JSON Schema" in system
+
+
 @pytest.mark.parametrize(
     "reply",
     [
@@ -175,6 +151,7 @@ async def test_invalid_structured_replies_raise_and_are_recorded(reply, reason):
     assert caught.value.reply_text == reply
     assert reply not in str(caught.value)
     receipt = gateway.receipts.recent()[0]
+    assert caught.value.receipt == receipt
     assert (receipt.outcome, receipt.structured_valid) == ("error", False)
     assert (receipt.error_kind, receipt.answered_by) == ("model_structured_output_invalid", PINNED)
 
@@ -204,11 +181,12 @@ async def test_provider_failures_are_typed_recorded_and_redacted(status, error_t
 
     gateway = nightshift_gateway(handler)
     with pytest.raises(error_type) as caught:
-        await gateway.generate("hi", capability=REQUIREMENTS_CAPABILITY)
+        await gateway.generate("hi", capability=REQUIREMENTS_ANALYZE)
 
     assert caught.value.retryable is retryable
     assert TOKEN not in str(caught.value)
     receipt = gateway.receipts.recent()[0]
+    assert caught.value.receipt == receipt
     assert (receipt.outcome, receipt.error_kind, receipt.retryable) == ("error", error_type.kind, retryable)
     assert TOKEN not in receipt.model_dump_json()
 
@@ -265,7 +243,7 @@ def test_a_missing_token_fails_closed():
         build_model_gateway(NightshiftSettings(_env_file=None, token=None), settings())
 
 
-# ----------------------------------------------- M4's LLMPort and the API
+# ------------------------------------------------------------- M4's LLMPort
 
 ANALYSIS = {
     "summary": "Subscription billing with payment-confirmed activation",
@@ -280,60 +258,17 @@ ANALYSIS = {
     "assumptions": [],
     "open_questions": [],
 }
-BRIEF = {"brief": "Add subscription billing"}
 
 
-async def test_capability_model_is_the_llm_port_of_the_requirements_service():
-    gateway, provider = make_gateway(json.dumps(ANALYSIS), lanes={REQUIREMENTS_CAPABILITY: PINNED})
-    port = gateway.for_capability(REQUIREMENTS_CAPABILITY)
+async def test_capability_model_is_an_llm_port_for_the_requirements_service():
+    gateway, provider = make_gateway(json.dumps(ANALYSIS), lanes={REQUIREMENTS_ANALYZE: PINNED})
+    port = gateway.for_capability(REQUIREMENTS_ANALYZE)
     assert isinstance(port, LLMPort)
 
     service = RequirementsService(llm=port, repo=InMemoryRepository())
-    _, requirements = await service.analyze_project(uuid.uuid4(), BRIEF["brief"])
+    _, requirements = await service.analyze_project(uuid.uuid4(), "Add subscription billing")
 
     assert [requirement.title for requirement in requirements] == ["Activate only after payment confirmation"]
     assert provider.calls[0]["model"] == PINNED
     schema_prompt = provider.calls[0]["messages"][0].content
     assert '"non_functional"' in schema_prompt and '"could"' in schema_prompt  # allowed values reach the model
-
-
-def api_client(port_factory) -> TestClient:
-    app = create_app()
-    app.dependency_overrides[requirements_model] = port_factory
-    return TestClient(app)
-
-
-def test_the_requirements_endpoint_answers_through_the_gateway():
-    gateway, _ = make_gateway(json.dumps(ANALYSIS))
-    with api_client(lambda: gateway.for_capability(REQUIREMENTS_CAPABILITY)) as client:
-        response = client.post("/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF})
-
-    assert response.status_code == 200
-    assert response.json()["requirements"][0]["title"] == "Activate only after payment confirmation"
-    assert gateway.receipts.recent()[0].capability == REQUIREMENTS_CAPABILITY
-
-
-def test_model_failures_reach_the_client_classified():
-    gateway, _ = make_gateway(ModelUnavailableError("nightshift: cannot reach the runtime"))
-    with api_client(lambda: gateway.for_capability(REQUIREMENTS_CAPABILITY)) as client:
-        response = client.post("/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF})
-
-    assert response.status_code == 503
-    assert response.headers["retry-after"] == "30"
-    assert response.json()["error"] == {
-        "kind": "model_unavailable",
-        "message": "nightshift: cannot reach the runtime",
-        "retryable": True,
-    }
-
-
-def test_an_unconfigured_gateway_fails_closed_with_503(monkeypatch):
-    def unconfigured():
-        raise ModelConfigError("nightshift: NIGHTSHIFT_TOKEN is not set")
-
-    monkeypatch.setattr(api, "get_model_gateway", unconfigured)
-    with TestClient(create_app()) as client:
-        response = client.post("/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF})
-
-    assert response.status_code == 503
-    assert response.json()["error"]["kind"] == "model_config"
