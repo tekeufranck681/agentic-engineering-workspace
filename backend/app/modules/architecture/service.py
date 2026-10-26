@@ -70,6 +70,18 @@ class ArchitectureService:
     allocation and artifact persistence.
     """
 
+    @staticmethod
+    def _bump_and_seal(artifact) -> None:
+        """Advance `version` and re-seal before saving a mutation.
+
+        Persistence is append-only versioned (unique on project+id+version):
+        a mutation must land as a NEW version row, never an overwrite of the
+        same version (the in-memory fake allowed overwriting; the database
+        rejects it).
+        """
+        artifact.version += 1
+        artifact.seal()
+
     def __init__(self, llm: LLMPort, repo: RepositoryPort) -> None:
         self._llm = llm
         self._repo = repo
@@ -198,8 +210,9 @@ class ArchitectureService:
         adr.seal()
         await self._repo.save_artifact(adr)
 
-        # Link into parent doc
+        # Link into parent doc — as a new version row (append-only).
         doc.decision_ids.append(adr_id)
+        self._bump_and_seal(doc)
         await self._repo.save_artifact(doc)
         return adr
 
@@ -255,6 +268,7 @@ class ArchitectureService:
             raise ValueError(f"ArchitectureDoc {architecture_id} not found")
         assert_transition(doc.status, ArtifactStatus.accepted, ARCH_TRANSITIONS)
         doc.status = ArtifactStatus.accepted
+        self._bump_and_seal(doc)
         await self._repo.save_artifact(doc)
         return doc
 

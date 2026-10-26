@@ -83,6 +83,18 @@ class RequirementsService:
         self._llm = llm
         self._repo = repo
 
+    @staticmethod
+    def _bump_and_seal(artifact) -> None:
+        """Advance `version` and re-seal before saving a state transition.
+
+        Persistence is append-only versioned (unique on project+id+version):
+        a transition must land as a NEW version row, never an overwrite of
+        the same version. Re-sealing keeps the content hash honest after the
+        mutation (version is hashed; status is excluded).
+        """
+        artifact.version += 1
+        artifact.seal()
+
     # -- requirements analysis ------------------------------------------------
 
     async def analyze_project(
@@ -246,11 +258,13 @@ class RequirementsService:
                 rset.status, RequirementStatus.in_review, REQUIREMENT_TRANSITIONS
             )
             rset.status = RequirementStatus.in_review
+            self._bump_and_seal(rset)
             await self._repo.save_artifact(rset)
         assert_transition(
             rset.status, RequirementStatus.approved, REQUIREMENT_TRANSITIONS
         )
         rset.status = RequirementStatus.approved
+        self._bump_and_seal(rset)
         await self._repo.save_artifact(rset)
         return rset
 
@@ -265,6 +279,7 @@ class RequirementsService:
             rset.status, RequirementStatus.locked, REQUIREMENT_TRANSITIONS
         )
         rset.status = RequirementStatus.locked
+        self._bump_and_seal(rset)
         await self._repo.save_artifact(rset)
         return rset
 

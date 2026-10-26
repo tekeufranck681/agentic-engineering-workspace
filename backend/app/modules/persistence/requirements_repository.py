@@ -31,9 +31,17 @@ from app.modules.persistence.requirements_models import (
     RequirementsSetRow,
     UserStoryRow,
 )
+from app.modules.persistence.architecture_models import (
+    ARCH_ROW_CLASS_BY_KIND,
+    AdrRow,
+    ArchitectureRow,
+    EngineeringContractRow,
+    TaskRow,
+)
 from app.modules.persistence.run_models import RunRow
 
 ROW_CLASS_BY_KIND["run"] = RunRow
+ROW_CLASS_BY_KIND.update(ARCH_ROW_CLASS_BY_KIND)  # 0005: arch, ADR, contract, task
 
 
 class SqlAlchemyArtifactRepository:
@@ -145,6 +153,10 @@ class SqlAlchemyArtifactRepository:
             "AC": AcceptanceCriterionRow,
             "RSET": RequirementsSetRow,
             "RUN": RunRow,
+            "ARCH": ArchitectureRow,
+            "ADR": AdrRow,
+            "CON": EngineeringContractRow,
+            "TASK": TaskRow,
         }
         prefix, _ = parse_id(id)
         try:
@@ -156,9 +168,13 @@ class SqlAlchemyArtifactRepository:
     def _to_domain(row) -> Artifact:
         """Rebuild the ENG-004 Pydantic artifact from its row (lossless)."""
         from app.domain.acceptance_criterion import AcceptanceCriterion
+        from app.domain.adr import ArchitectureDecision
+        from app.domain.architecture import ArchitectureDoc
+        from app.domain.contract import EngineeringContract
         from app.domain.requirements import Requirement
         from app.domain.requirements_set import RequirementsSet
         from app.domain.run import Run
+        from app.domain.task import Task
         from app.domain.user_story import UserStory
 
         domain_class_by_row: dict[type, type[Artifact]] = {
@@ -167,6 +183,10 @@ class SqlAlchemyArtifactRepository:
             AcceptanceCriterionRow: AcceptanceCriterion,
             RequirementsSetRow: RequirementsSet,
             RunRow: Run,
+            ArchitectureRow: ArchitectureDoc,
+            AdrRow: ArchitectureDecision,
+            EngineeringContractRow: EngineeringContract,
+            TaskRow: Task,
         }
         domain_class = domain_class_by_row[type(row)]
         payload = {
