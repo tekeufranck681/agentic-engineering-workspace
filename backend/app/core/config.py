@@ -1,7 +1,8 @@
-"""Application settings (PROVISIONAL core — M4's ENG-009 will own this file).
+"""Application settings (ENG-009, owned by M4).
 
-Only what the M2 modules need: a database URL. Everything is read from the
-environment (or a local .env file); nothing secret lives in code.
+Config is read from the environment (or a local .env file); nothing secret
+lives in code. Discovered by walking upward from the working directory so
+running from either the repo root or backend/ finds the same file.
 """
 
 from functools import lru_cache
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./aew-dev.db"
     """SQLAlchemy URL. PostgreSQL in team/dev environments, SQLite allowed for
     zero-setup local runs and tests."""
+
+    log_level: str = "INFO"
+    """Root log level: DEBUG, INFO, WARNING, ERROR, or CRITICAL."""
 
 
 @lru_cache
