@@ -54,6 +54,8 @@ class RuntimeReceipt(BaseModel):
     winning_route_provider: str | None = None
     receipt_id: str | None = None
     decision_id: str | None = None
+    from_cache: bool | None = None
+    """True when the runtime answered from its cache instead of running a model."""
     keys: list[str] = Field(default_factory=list)
     sha256: str = Field(description="SHA-256 of the canonical JSON of the meterless object")
 
@@ -77,6 +79,7 @@ class RuntimeReceipt(BaseModel):
             winning_route_provider=text(route, "provider"),
             receipt_id=text(payload, "receipt_id"),
             decision_id=text(payload, "decision_id"),
+            from_cache=payload["from_cache"] if isinstance(payload.get("from_cache"), bool) else None,
             keys=sorted(str(key) for key in payload),
             sha256=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         )
