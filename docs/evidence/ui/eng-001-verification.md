@@ -39,3 +39,7 @@ These checks verify ENG-001 shell acceptance only. No backend suite, live sponso
 ## Review handoff
 
 Local implementation commit: `2f421d0`; packaging correction: `c4237b7`. The correction removes the temporary dependency symlink from the tracked tree and makes the ignore rule cover symlinks as well as directories. The staged command containing publication was rejected by automatic approval review before execution: remote ownership/trust was not established by trusted user content and source/evidence could be private. The local packaging correction was then completed separately. No push or PR was created. Draft PR: `docs/execution/reviews/ENG-001-PR-DRAFT.md`. Publishing requires explicit user approval of the existing origin destination.
+
+## Development startup repair
+
+The user reproduced Turbopack's outside-root resolution failure with `npm run dev` against the retained RAM-backed dependency symlink. Updated dev and build scripts to use the supported `--webpack` option, avoiding a widened Turbopack filesystem root. Disk remained insufficient for materializing the 519MB dependency directory (177MB available). Stopped the earlier production preview and restarted the identified frontend dev process. The working-tree `npm run dev` served `/projects/preview/overview` on port 3000 with HTTP 200; lint and TypeScript passed. Next.js generated frontend/AGENTS.md during startup. Existing generated next-env.d.ts development-mode changes were preserved.

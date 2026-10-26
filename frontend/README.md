@@ -22,3 +22,7 @@ Checks: `npm run lint`, `npm run typecheck`, `npm run build`. Production: `npm r
 - The inspector slot is structural only. Interactive inspector dismissal/focus restoration belongs with the screen that first opens one.
 
 Authoritative design/source mapping: ../docs/execution/audits/M1-INITIAL-AUDIT.md. ENG-006 readiness still requires accepted ENG-001 and ENG-004.
+
+## Bundler and local storage
+
+Dev and production builds explicitly use Next.js Webpack mode. Turbopack cannot resolve the current external, RAM-backed node_modules symlink because its target lies outside the frontend root. Webpack supports this setup without widening filesystem roots. Once disk space is available, replace the temporary symlink with a normal `npm ci` installation. RAM-backed dependencies disappear on reboot.
