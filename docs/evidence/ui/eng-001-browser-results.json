@@ -1,0 +1,127 @@
+{
+  "routes": [
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "overview",
+      "nav": 6,
+      "active": "/projects/preview/overview",
+      "heading": "Overview",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "requirements",
+      "nav": 6,
+      "active": "/projects/preview/requirements",
+      "heading": "Requirements",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "architecture",
+      "nav": 6,
+      "active": "/projects/preview/architecture",
+      "heading": "Architecture",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "planning",
+      "nav": 6,
+      "active": "/projects/preview/planning",
+      "heading": "Planning",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "runs",
+      "nav": 6,
+      "active": "/projects/preview/runs",
+      "heading": "Agent Runs",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "slug": "delivery",
+      "nav": 6,
+      "active": "/projects/preview/delivery",
+      "heading": "Delivery",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "overview",
+      "nav": 6,
+      "active": "/projects/preview/overview",
+      "heading": "Overview",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "requirements",
+      "nav": 6,
+      "active": "/projects/preview/requirements",
+      "heading": "Requirements",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "architecture",
+      "nav": 6,
+      "active": "/projects/preview/architecture",
+      "heading": "Architecture",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "planning",
+      "nav": 6,
+      "active": "/projects/preview/planning",
+      "heading": "Planning",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "runs",
+      "nav": 6,
+      "active": "/projects/preview/runs",
+      "heading": "Agent Runs",
+      "placeholder": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "slug": "delivery",
+      "nav": 6,
+      "active": "/projects/preview/delivery",
+      "heading": "Delivery",
+      "placeholder": true,
+      "overflow": false
+    }
+  ],
+  "keyboard": "Tab skip link and focus outline at both desktop sizes; mobile menu opens, Escape closes and restores focus",
+  "unknownRoute": 404,
+  "runtimeExceptions": []
+}
