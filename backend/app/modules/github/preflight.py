@@ -119,28 +119,36 @@ def run_preflight(
             if demo_data.get("archived"):
                 report.add("demo repo", "fail", "demo repo is archived")
             elif not perms.get("push"):
-                report.add("demo repo", "fail", f"{visibility}, token has no push permission")
+                # `permissions` is the account's role, not the token's grant;
+                # the token's own write access is proven by --write-probe.
+                report.add("demo repo", "fail", f"{visibility}, the account cannot push to it")
             else:
                 report.add(
                     "demo repo",
                     "pass",
-                    f"{visibility}, default branch {demo_data.get('default_branch')}, push allowed",
+                    f"{visibility}, default branch {demo_data.get('default_branch')}, account can push",
                 )
-            if perms.get("admin"):
-                report.add("demo admin", "warn", "token has admin on the demo repo; push is enough")
 
-        # 3. product repo must not be writable
-        product = gh.get(f"/repos/{settings.product_repo}")
-        if product.status_code in (403, 404):
-            report.add("product repo isolation", "pass", f"token cannot see it (HTTP {product.status_code})")
-        elif product.status_code == 200:
-            perms = product.json().get("permissions") or {}
-            if perms.get("push") or perms.get("admin"):
-                report.add("product repo isolation", "fail", "token can write the product repo")
-            else:
-                report.add("product repo isolation", "pass", "visible but read-only for this token")
+        # 3. product repo must not be writable BY THIS TOKEN. The repo's
+        # `permissions` field reflects the account (a team member can push),
+        # so probe instead: ask to create a ref at a commit that cannot exist.
+        # GitHub checks permission first: 403/404 = no write access, 422 = the
+        # token could write and only the fake commit was rejected. Nothing is
+        # created either way.
+        probe = gh.post(
+            f"/repos/{settings.product_repo}/git/refs",
+            json={"ref": "refs/heads/aew-preflight-isolation-probe", "sha": "0" * 40},
+        )
+        if probe.status_code in (403, 404):
+            report.add("product repo isolation", "pass", f"token cannot write it (HTTP {probe.status_code})")
+        elif probe.status_code == 422:
+            report.add(
+                "product repo isolation",
+                "fail",
+                "token has write access to the product repo; limit the token to the demo repo only",
+            )
         else:
-            report.add("product repo isolation", "fail", f"unexpected HTTP {product.status_code}")
+            report.add("product repo isolation", "warn", f"inconclusive probe, HTTP {probe.status_code}")
 
         # 4. default branch protection and quota
         default_branch = demo_data.get("default_branch")
@@ -154,6 +162,8 @@ def run_preflight(
                     "warn",
                     f"{default_branch} is not protected; the agent must only push feature branches",
                 )
+            elif branch.status_code == 404:
+                report.add("demo default branch", "fail", f"{default_branch} does not exist yet (empty repo?)")
             else:
                 report.add("demo default branch", "warn", f"branch lookup HTTP {branch.status_code}")
 
@@ -179,6 +189,8 @@ def run_preflight(
 
 def _write_probe(gh: httpx.Client, repo: str, default_branch: str) -> tuple[Status, str]:
     head = gh.get(f"/repos/{repo}/git/ref/heads/{default_branch}")
+    if head.status_code == 409:
+        return "fail", "demo repo is empty (no commits); add a README on GitHub to create the default branch"
     if head.status_code != 200:
         return "fail", f"cannot read {default_branch} ref (HTTP {head.status_code})"
     sha = head.json()["object"]["sha"]

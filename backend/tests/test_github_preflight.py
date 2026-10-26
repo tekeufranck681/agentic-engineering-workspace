@@ -20,9 +20,9 @@ def make_handler(
     scopes: str | None = None,
     demo_status: int = 200,
     demo_perms: dict | None = None,
-    product_status: int = 404,
-    product_perms: dict | None = None,
+    product_probe: int = 403,
     protected: bool = True,
+    empty_repo: bool = False,
     calls: list | None = None,
 ):
     demo_perms = {"push": True, "admin": False} if demo_perms is None else demo_perms
@@ -40,13 +40,18 @@ def make_handler(
                 demo_status,
                 json={"private": False, "archived": False, "default_branch": "main", "permissions": demo_perms},
             )
-        if path == f"/repos/{PRODUCT}":
-            return httpx.Response(product_status, json={"permissions": product_perms or {}})
+        if path == f"/repos/{PRODUCT}/git/refs" and request.method == "POST":
+            assert b"0000000000" in request.read()
+            return httpx.Response(product_probe, json={})
         if path == f"/repos/{DEMO}/branches/main":
+            if empty_repo:
+                return httpx.Response(404, json={})
             return httpx.Response(200, json={"protected": protected})
         if path == "/rate_limit":
             return httpx.Response(200, json={"resources": {"core": {"remaining": 4990, "limit": 5000}}})
         if path == f"/repos/{DEMO}/git/ref/heads/main":
+            if empty_repo:
+                return httpx.Response(409, json={"message": "Git Repository is empty."})
             return httpx.Response(200, json={"object": {"sha": "a" * 40}})
         if path == f"/repos/{DEMO}/git/refs" and request.method == "POST":
             return httpx.Response(201, json={})
@@ -70,7 +75,9 @@ def test_happy_path_is_read_only_by_default():
     assert s["demo repo"] == "pass"
     assert s["product repo isolation"] == "pass"
     assert s["contents write"] == "skip"
-    assert all(method == "GET" for method, _ in calls)
+    # the only non-GET is the isolation probe against the product repo
+    writes = [(m, p) for m, p in calls if m != "GET"]
+    assert writes == [("POST", f"/repos/{PRODUCT}/git/refs")]
 
 
 def test_write_probe_creates_and_deletes_a_branch():
@@ -79,8 +86,8 @@ def test_write_probe_creates_and_deletes_a_branch():
         make_settings(), write_probe=True, transport=httpx.MockTransport(make_handler(calls=calls))
     )
     assert statuses(report)["contents write"] == "pass"
-    methods = [m for m, _ in calls]
-    assert methods.count("POST") == 1 and methods.count("DELETE") == 1
+    demo_writes = [m for m, p in calls if m != "GET" and p.startswith(f"/repos/{DEMO}")]
+    assert demo_writes == ["POST", "DELETE"]
 
 
 def test_classic_token_with_repo_scope_fails():
@@ -92,8 +99,8 @@ def test_classic_token_with_repo_scope_fails():
     assert statuses(report)["token kind"] == "fail"
 
 
-def test_writable_product_repo_fails():
-    handler = make_handler(product_status=200, product_perms={"push": True})
+def test_token_with_product_write_access_fails():
+    handler = make_handler(product_probe=422)
     report = run_preflight(make_settings(), transport=httpx.MockTransport(handler))
     assert not report.passed
     assert statuses(report)["product repo isolation"] == "fail"
@@ -136,3 +143,19 @@ def test_evidence_never_contains_token():
     settings = make_settings()
     report = run_preflight(settings, transport=httpx.MockTransport(make_handler()))
     assert settings.bearer_token() not in render_markdown(report)
+
+
+def test_unexpected_probe_status_is_inconclusive():
+    report = run_preflight(make_settings(), transport=httpx.MockTransport(make_handler(product_probe=500)))
+    assert statuses(report)["product repo isolation"] == "warn"
+
+
+def test_empty_demo_repo_explains_the_fix():
+    report = run_preflight(
+        make_settings(), write_probe=True, transport=httpx.MockTransport(make_handler(empty_repo=True))
+    )
+    s = statuses(report)
+    assert s["demo default branch"] == "fail"
+    assert s["contents write"] == "fail"
+    detail = next(c.detail for c in report.checks if c.name == "contents write")
+    assert "README" in detail
