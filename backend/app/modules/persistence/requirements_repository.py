@@ -22,11 +22,18 @@ from sqlalchemy.orm import Session
 
 from app.domain.base import Artifact
 from app.domain.enums import ArtifactKind, ArtifactStatus
-from app.domain.ids import ReadableId, format_id
+from app.domain.ids import ReadableId, format_id, parse_id
 from app.modules.persistence.requirements_models import (
     ROW_CLASS_BY_KIND,
     ArtifactCounterRow,
+    AcceptanceCriterionRow,
+    RequirementRow,
+    RequirementsSetRow,
+    UserStoryRow,
 )
+from app.modules.persistence.run_models import RunRow
+
+ROW_CLASS_BY_KIND["run"] = RunRow
 
 
 class SqlAlchemyArtifactRepository:
@@ -132,19 +139,12 @@ class SqlAlchemyArtifactRepository:
     @staticmethod
     def _row_class_for_id(id: str):
         """Map a readable id ("REQ-001") to its row class via the kind prefix."""
-        from app.domain.ids import parse_id
-        from app.modules.persistence.requirements_models import (
-            AcceptanceCriterionRow,
-            RequirementRow,
-            RequirementsSetRow,
-            UserStoryRow,
-        )
-
         row_class_by_prefix = {
             "REQ": RequirementRow,
             "US": UserStoryRow,
             "AC": AcceptanceCriterionRow,
             "RSET": RequirementsSetRow,
+            "RUN": RunRow,
         }
         prefix, _ = parse_id(id)
         try:
@@ -158,19 +158,15 @@ class SqlAlchemyArtifactRepository:
         from app.domain.acceptance_criterion import AcceptanceCriterion
         from app.domain.requirements import Requirement
         from app.domain.requirements_set import RequirementsSet
+        from app.domain.run import Run
         from app.domain.user_story import UserStory
-        from app.modules.persistence.requirements_models import (
-            AcceptanceCriterionRow,
-            RequirementRow,
-            RequirementsSetRow,
-            UserStoryRow,
-        )
 
         domain_class_by_row: dict[type, type[Artifact]] = {
             RequirementRow: Requirement,
             UserStoryRow: UserStory,
             AcceptanceCriterionRow: AcceptanceCriterion,
             RequirementsSetRow: RequirementsSet,
+            RunRow: Run,
         }
         domain_class = domain_class_by_row[type(row)]
         payload = {

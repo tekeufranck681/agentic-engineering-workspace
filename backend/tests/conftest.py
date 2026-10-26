@@ -18,6 +18,7 @@ from app.core.db import Base, get_session, make_session_factory
 # Import models so Base.metadata is complete before create_all.
 import app.modules.persistence.models  # noqa: F401
 import app.modules.persistence.requirements_models  # noqa: F401
+import app.modules.persistence.run_models  # noqa: F401
 from app.main import create_app
 
 
