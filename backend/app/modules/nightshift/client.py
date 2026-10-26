@@ -35,6 +35,7 @@ from app.modules.nightshift.errors import (
     NightshiftUnavailableError,
 )
 from app.modules.nightshift.evidence import (
+    ROUTING_MODE_PREFIX,
     ChatCallEvidence,
     ProbeEvidence,
     RuntimeReceipt,
@@ -45,7 +46,6 @@ from app.modules.nightshift.evidence import (
 
 MODELS_PATH = "/models"
 CHAT_PATH = "/chat/completions"
-METERLESS_PREFIX = "meterless/"
 MAX_ERROR_TEXT = 200
 
 
@@ -134,8 +134,8 @@ class NightshiftClient:
         suffix = f" ({code})" if code else ""
         if status in (401, 403):
             raise NightshiftAuthError(
-                f"nightshift refused the token (HTTP {status}){suffix}: copy a fresh "
-                "token from <stateDir>/proxy-token",
+                f"nightshift refused the token (HTTP {status}){suffix}: copy the current "
+                "API key (Nightshift Console > API key) into NIGHTSHIFT_TOKEN",
                 status_code=status,
                 code=code,
             )
@@ -208,7 +208,7 @@ class NightshiftClient:
             ids = _model_ids(response.json())
         except ValueError:
             ids = []
-        if not any(model_id.startswith(METERLESS_PREFIX) for model_id in ids):
+        if not any(model_id.startswith(ROUTING_MODE_PREFIX) for model_id in ids):
             return ProbeEvidence(
                 **evidence,
                 state=RuntimeState.OFFLINE,
