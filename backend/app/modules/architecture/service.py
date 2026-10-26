@@ -10,7 +10,9 @@ from app.domain.base import TraceLinks
 from app.domain.adr import ArchitectureDecision
 from app.domain.contract import (
     ApiContractContent,
+    ApiEndpoint,
     DbSchemaContractContent,
+    DbTable,
     EngineeringContract,
     UmlContractContent,
 )
@@ -53,8 +55,10 @@ class LLMADRGeneration(BaseModel):
 
 class LLMContractGeneration(BaseModel):
     kind: Literal["api", "db_schema", "uml"]
-    endpoints: list[dict] = Field(default_factory=list)
-    tables: list[dict] = Field(default_factory=list)
+    # Domain types, so the model sees the required fields in the JSON Schema
+    # and a malformed answer is repaired by the capability runtime, not a 500.
+    endpoints: list[ApiEndpoint] = Field(default_factory=list)
+    tables: list[DbTable] = Field(default_factory=list)
     diagram_type: str = ""
     source: str = ""
 
@@ -109,7 +113,7 @@ class ArchitectureService:
         for ref in rset.members:
             req = await self._repo.get_artifact(project_id, ref.id)
             if isinstance(req, Requirement):
-                req_titles.append(f"- {req.title}: {req.description}")
+                req_titles.append(f"- {req.id} {req.title}: {req.description}")
         req_text = "\n".join(req_titles)
 
         prompt = (

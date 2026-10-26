@@ -21,7 +21,7 @@ from app.domain.fakes import InMemoryRepository
 from app.domain.ports import LLMPort
 from app.main import create_app
 from app.modules.capabilities import api
-from app.modules.capabilities.api import requirements_capability
+from app.modules.capabilities.api import architecture_capability, requirements_capability
 from app.modules.capabilities.contract import CancellationToken, CapabilityContract, InvocationContext
 from app.modules.capabilities.errors import (
     CapabilityCancelledError,
@@ -40,6 +40,7 @@ from app.modules.capabilities.runtime import CapabilityRuntime
 from app.modules.model_gateway.config import ModelGatewaySettings
 from app.modules.model_gateway.errors import ModelAuthError, ModelConfigError, ModelRateLimitedError
 from app.modules.model_gateway.gateway import ModelGateway
+from app.modules.persistence.models import Project
 from app.modules.requirements.service import RequirementsService
 from tests.model_fakes import PINNED, ScriptedProvider
 
@@ -335,7 +336,14 @@ def test_provider_failures_keep_their_gateway_classification(api_client):
     assert response.json()["error"]["kind"] == "model_auth"
 
 
-def test_an_unconfigured_model_runtime_fails_closed_with_503(monkeypatch):
+@pytest.mark.parametrize(
+    "path, body",
+    [
+        ("/requirements/analyze", BRIEF),
+        ("/architecture/generate", {"requirements_set_id": "RSET-001"}),
+    ],
+)
+def test_an_unconfigured_model_runtime_fails_closed_with_503(monkeypatch, path, body):
     def unconfigured():
         raise ModelConfigError("nightshift: NIGHTSHIFT_TOKEN is not set")
 
@@ -343,9 +351,89 @@ def test_an_unconfigured_model_runtime_fails_closed_with_503(monkeypatch):
     with TestClient(create_app()) as client:
         # No project needed: the capability dependency raises during resolution,
         # before the router ever touches persistence.
-        response = client.post(
-            "/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF}
-        )
+        response = client.post(path, json={"project_id": str(uuid.uuid4()), **body})
 
     assert response.status_code == 503
     assert response.json()["error"]["kind"] == "model_config"
+
+
+# --------------------------------------------------------- architecture API
+
+ARCHITECTURE = {
+    "summary": "Billing service gated on payment confirmation",
+    "components": [
+        {
+            "name": "BillingService",
+            "responsibility": "Activates a subscription only after a confirmed payment",
+            "depends_on": [],
+            "requirement_ids": ["REQ-001"],
+        }
+    ],
+    "decision_summaries": ["Activate on the payment-confirmed webhook"],
+}
+ADR = {
+    "title": "Activate on the payment-confirmed webhook",
+    "context": "Activation must wait for a trustworthy payment confirmation",
+    "decision": "Activate the subscription in the payment-succeeded handler",
+    "alternatives": ["Poll the payment provider"],
+    "consequences": ["A webhook endpoint is needed"],
+}
+ENDPOINT = {"method": "POST", "path": "/webhooks/payments", "summary": "Payment confirmation webhook"}
+NIL_PROJECT = uuid.UUID(int=0)  # the routers' provisional project placeholder
+
+
+@pytest.fixture()
+def design_client(session):
+    """Requirements and architecture endpoints on one scripted runtime and the real tables."""
+    session.add(Project(id=NIL_PROJECT, name="cap-test-nil", description=None))
+    session.commit()
+
+    def build(runtime: CapabilityRuntime) -> TestClient:
+        app = create_app()
+
+        def override_get_session() -> Iterator[Session]:
+            yield session
+
+        app.dependency_overrides[get_session] = override_get_session
+        app.dependency_overrides[requirements_capability] = lambda: runtime.port(REQUIREMENTS_ANALYZE)
+        app.dependency_overrides[architecture_capability] = lambda: runtime.port(ARCHITECTURE_DESIGN)
+        return TestClient(app)
+
+    return build
+
+
+def test_the_architecture_endpoints_answer_through_the_runtime(design_client):
+    runtime, provider, _ = make_runtime(
+        json.dumps(ANALYSIS),
+        json.dumps(ARCHITECTURE),
+        json.dumps(ADR),
+        json.dumps({"kind": "api", "endpoints": [{"method": "POST", "path": "/webhooks/payments"}]}),
+        json.dumps({"kind": "api", "endpoints": [ENDPOINT]}),
+    )
+    nil = str(NIL_PROJECT)
+    with design_client(runtime) as client:
+        assert client.post("/requirements/analyze", json={"project_id": nil, **BRIEF}).status_code == 200
+        assert client.post("/requirements/set/RSET-001/approve", json={"approved_by": "m3"}).status_code == 200
+        assert client.post("/requirements/set/RSET-001/lock", json={"locked_by": "m3"}).status_code == 200
+        generated = client.post("/architecture/generate", json={"project_id": nil, "requirements_set_id": "RSET-001"})
+        contract = client.post("/architecture/contract", json={"project_id": nil, "kind": "api", "context": "webhook"})
+
+    assert generated.status_code == 200, generated.text
+    assert generated.json()["architecture"]["components"][0]["requirement_ids"] == ["REQ-001"]
+    assert generated.json()["decisions"][0]["title"] == ADR["title"]
+    system, user = provider.calls[1]["messages"]
+    assert system.content.startswith("You are the architecture capability")
+    assert "REQ-001 Activate only after payment confirmation" in user.content  # the model can trace ids
+
+    # The contract schema shows the model the domain's required endpoint fields,
+    # and an endpoint without a summary is repaired instead of failing with a 500.
+    assert contract.status_code == 200, contract.text
+    assert contract.json()["contract"]["content"]["endpoints"][0]["summary"] == ENDPOINT["summary"]
+    assert '"required":["method","path","summary"]' in provider.calls[3]["messages"][0].content
+    assert "summary" in provider.calls[4]["messages"][1].content
+    assert [(r.capability, r.outcome, r.repairs) for r in runtime.receipts.recent()] == [
+        (ARCHITECTURE_DESIGN, "ok", 1),
+        (ARCHITECTURE_DESIGN, "ok", 0),
+        (ARCHITECTURE_DESIGN, "ok", 0),
+        (REQUIREMENTS_ANALYZE, "ok", 0),
+    ]
