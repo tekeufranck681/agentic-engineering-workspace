@@ -104,6 +104,23 @@ class RunStore:
         )
         return list(self._session.scalars(statement).all())
 
+    def get_run_status(self, run_id: str) -> str | None:
+        """Latest-version status of `run_id`, or None when the run is unknown.
+
+        Reads the runs table directly by readable id (a streaming client knows
+        the run id, not the project context the artifact port requires).
+        """
+        from app.modules.persistence.run_models import RunRow
+
+        statement = (
+            select(RunRow.status)
+            .where(RunRow.id == run_id)
+            .order_by(RunRow.version.desc())
+            .limit(1)
+        )
+        status = self._session.scalar(statement)
+        return None if status is None else str(status)
+
     # ------------------------------------------------- invocations and tools
 
     def record_capability_invocation(
