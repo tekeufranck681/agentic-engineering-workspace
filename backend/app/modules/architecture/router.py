@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_session
 from app.domain.errors import TransitionError
-from app.domain.fakes import FakeLLM
+from app.domain.ports import LLMPort
 from app.modules.architecture.service import ArchitectureService
+from app.modules.capabilities.api import architecture_capability
 from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
 from app.modules.architecture.schemas import (
     ArchitectureGenerateRequest,
@@ -24,15 +25,17 @@ from app.modules.architecture.schemas import (
 router = APIRouter(prefix="/architecture", tags=["architecture"])
 
 
-def get_service(session: Session = Depends(get_session)) -> ArchitectureService:
-    """Dependency: REAL persistence on the request session; LLM seam pending M3.
+def get_service(
+    llm: LLMPort = Depends(architecture_capability),
+    session: Session = Depends(get_session),
+) -> ArchitectureService:
+    """Dependency: REAL persistence on the request session and the real model.
 
-    RepositoryPort is M2's SqlAlchemyArtifactRepository (0005 tables). M3 still
-    replaces FakeLLM with the architecture capability port (ENG-008/028);
-    until then, generation endpoints answer 500 unless tests override this
-    dependency — honest, instead of silently pretending model output exists.
+    RepositoryPort is M2's SqlAlchemyArtifactRepository (0005 tables). The
+    LLMPort is M3's capability runtime for architecture.design_change (ENG-028
+    on the ENG-008 gateway: bounded repair, retries, timeout, receipts); tests
+    override ``architecture_capability`` and ``get_session``, or this dependency.
     """
-    llm = FakeLLM(responses={})
     repo = SqlAlchemyArtifactRepository(session)
     return ArchitectureService(llm=llm, repo=repo)
 

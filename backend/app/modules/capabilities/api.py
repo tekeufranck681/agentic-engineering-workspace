@@ -17,7 +17,7 @@ from app.modules.capabilities.errors import (
     CapabilityNotFoundError,
     CapabilityTimeoutError,
 )
-from app.modules.capabilities.registry import REQUIREMENTS_ANALYZE, default_registry
+from app.modules.capabilities.registry import ARCHITECTURE_DESIGN, REQUIREMENTS_ANALYZE, default_registry
 from app.modules.capabilities.runtime import CapabilityPort, CapabilityRuntime
 from app.modules.model_gateway.api import RETRY_AFTER_SECONDS, get_model_gateway
 
@@ -39,6 +39,11 @@ def get_capability_runtime() -> CapabilityRuntime:
 def requirements_capability() -> CapabilityPort:
     """LLMPort for M4's requirements service."""
     return get_capability_runtime().port(REQUIREMENTS_ANALYZE)
+
+
+def architecture_capability() -> CapabilityPort:
+    """LLMPort for M4's architecture service (architecture, ADRs, contracts)."""
+    return get_capability_runtime().port(ARCHITECTURE_DESIGN)
 
 
 def install_capability_error_handlers(app: FastAPI) -> None:
