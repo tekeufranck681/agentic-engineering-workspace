@@ -1,22 +1,32 @@
-"""FastAPI application factory (PROVISIONAL — M4's ENG-009 will own this).
+"""FastAPI application factory (ENG-009, owned by M4).
 
-Exists so the M2 persistence router can run and be tested in isolation; when
-the real bootstrap lands it replaces this file and mounts the same router.
+Boots the workspace backend: configures logging, mounts every module router,
+and exposes a health check. Module routers live under app/modules/*; this file
+is wiring only.
 """
 
 from fastapi import FastAPI
 
+from app.core.logging import setup_logging
 from app.modules.persistence.router import router as persistence_router
+from app.modules.requirements.router import router as requirements_router
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Agentic Engineering Workspace (M2 dev slice)")
+    setup_logging()
+
+    app = FastAPI(
+        title="Agentic Engineering Workspace",
+        description="AI engineering teammate — requirements through delivery.",
+        version="0.1.0",
+    )
 
     @app.get("/healthz", tags=["meta"])
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
     app.include_router(persistence_router)
+    app.include_router(requirements_router)
     return app
 
 
