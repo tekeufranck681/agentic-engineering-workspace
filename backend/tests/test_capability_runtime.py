@@ -306,17 +306,6 @@ def post_brief(client: TestClient):
 
 
 def test_the_requirements_endpoint_answers_through_the_runtime(api_client):
-def api_client(port_factory) -> TestClient:
-    app = create_app()
-    app.dependency_overrides[requirements_capability] = port_factory
-    return TestClient(app)
-
-
-def post_brief(client: TestClient):
-    return client.post("/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF})
-
-
-def test_the_requirements_endpoint_answers_through_the_runtime():
     runtime, _, _ = make_runtime(json.dumps(ANALYSIS))
     with api_client(lambda: runtime.port(REQUIREMENTS_ANALYZE)) as client:
         response = post_brief(client)
@@ -327,7 +316,6 @@ def test_the_requirements_endpoint_answers_through_the_runtime():
 
 
 def test_capability_failures_reach_the_client_classified(api_client):
-def test_capability_failures_reach_the_client_classified():
     runtime, _, _ = make_runtime(*[json.dumps(BAD_ANALYSIS)] * 3)
     with api_client(lambda: runtime.port(REQUIREMENTS_ANALYZE)) as client:
         response = post_brief(client)
@@ -339,7 +327,6 @@ def test_capability_failures_reach_the_client_classified():
 
 
 def test_provider_failures_keep_their_gateway_classification(api_client):
-def test_provider_failures_keep_their_gateway_classification():
     runtime, _, _ = make_runtime(ModelAuthError("nightshift refused the token"))
     with api_client(lambda: runtime.port(REQUIREMENTS_ANALYZE)) as client:
         response = post_brief(client)
@@ -359,7 +346,6 @@ def test_an_unconfigured_model_runtime_fails_closed_with_503(monkeypatch):
         response = client.post(
             "/requirements/analyze", json={"project_id": str(uuid.uuid4()), **BRIEF}
         )
-        response = post_brief(client)
 
     assert response.status_code == 503
     assert response.json()["error"]["kind"] == "model_config"
