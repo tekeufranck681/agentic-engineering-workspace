@@ -35,3 +35,7 @@ Dependencies were installed into `/dev/shm/aew-eng001-deps` with cache `/dev/shm
 Browser connector required an unavailable X server. A temporary local headless Chrome instance was used instead. An initial mobile automation assertion failed because programmatic `.click()` did not focus the trigger; rerunning with focus as a real click supplies passed. No production behavior change was needed for that assertion.
 
 These checks verify ENG-001 shell acceptance only. No backend suite, live sponsor integration, project persistence, SSE, requirements locking or actual engineering run was verified. Inspector slot is structural; interactive inspector behavior belongs to the first consuming screen. ENG-006 remains gated on acceptance of ENG-001 and ENG-004.
+
+## Review handoff
+
+Local implementation commit: `2f421d0`; packaging correction: `c4237b7`. The correction removes the temporary dependency symlink from the tracked tree and makes the ignore rule cover symlinks as well as directories. The staged command containing publication was rejected by automatic approval review before execution: remote ownership/trust was not established by trusted user content and source/evidence could be private. The local packaging correction was then completed separately. No push or PR was created. Draft PR: `docs/execution/reviews/ENG-001-PR-DRAFT.md`. Publishing requires explicit user approval of the existing origin destination.
