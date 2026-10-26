@@ -43,3 +43,13 @@ Local implementation commit: `2f421d0`; packaging correction: `c4237b7`. The cor
 ## Development startup repair
 
 The user reproduced Turbopack's outside-root resolution failure with `npm run dev` against the retained RAM-backed dependency symlink. Updated dev and build scripts to use the supported `--webpack` option, avoiding a widened Turbopack filesystem root. Disk remained insufficient for materializing the 519MB dependency directory (177MB available). Stopped the earlier production preview and restarted the identified frontend dev process. The working-tree `npm run dev` served `/projects/preview/overview` on port 3000 with HTTP 200; lint and TypeScript passed. Next.js generated frontend/AGENTS.md during startup. Existing generated next-env.d.ts development-mode changes were preserved.
+
+## Shell refinement and latest-main handoff
+
+User requested Vercel-like developer-tool presentation with the existing blue primary, referencing Kikx. Inspected `/home/tekeu-franck/kikx/web/app/globals.css`, `components/builder/dashboard-header.tsx` and its component inventory. Added semantic reusable Breadcrumb primitives and a Radix-backed dropdown, with keyboard-operable navigation to the six existing routes. Preserved blue primary #2563EB, neutral surfaces and the locked MVP. The menu is workspace-page navigation, not a persisted project switcher.
+
+After the user clarified manual-PR-only integration, the unpublished local merge was retained on backup/eng-001-local-sync and excluded from the publishable branch. Recreated feat/eng-001-shared-app-shell directly from latest origin/main ab3fe97, carrying only ENG-001 commits. The user will create/merge the PR in GitHub. No PR was created and main was not modified remotely.
+
+Current checks: lint, standard Webpack production build and TypeScript pass from the working tree. Refreshed browser results and both desktop screenshots. All six routes pass at 1440x900 and 1024x768; mobile menu/focus and no-overflow checks pass at 390x844. Dropdown: ArrowDown opens seven real navigation items; Escape restores focus; keyboard selection navigates to Requirements and updates breadcrumbs. Unknown workspace returns 404; no browser runtime exceptions. Reviewed `eng-001-workspace-menu.png` plus desktop screenshots.
+
+Build cache also uses a temporary RAM-backed symlink due disk exhaustion; ignore rules now cover both dependency and output symlinks. An initial output directory outside the dependency tree caused production runtime module lookup to fail; placing temporary output beside the dependencies resolved it. Neither symlink is tracked. No backend tests or live-service checks were run for this shell refinement.

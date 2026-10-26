@@ -2,8 +2,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
-import { Menu, X } from "lucide-react";
+import { Check, ChevronsUpDown, Code2, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { workspaces } from "@/lib/workspaces";
 export function AppShell({
   projectId,
@@ -18,6 +34,8 @@ export function AppShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const active = workspaces.find((item) => pathname.endsWith("/" + item.slug));
+  const projectLabel = projectId === "preview" ? "Shell preview" : projectId;
+  const projectPath = `/projects/${encodeURIComponent(projectId)}`;
   return (
     <div
       className="app-shell"
@@ -33,15 +51,53 @@ export function AppShell({
       </a>
       <aside className="sidebar" data-open={menuOpen} id="workspace-navigation">
         <Link className="brand" href="/">
+          <Code2 size={18} aria-hidden="true" className="brand-symbol" />
           Engineering workspace
         </Link>
         <div className="project-context">
-          <span className="text-xs text-muted-foreground">Project context</span>
-          <span className="project-id" title={projectId}>
-            {projectId === "preview" ? "Shell preview" : projectId}
-          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="workspace-switcher"
+                aria-label="Open workspace navigation"
+              >
+                <span className="workspace-initial" aria-hidden="true">
+                  {projectLabel.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="project-id" title={projectLabel}>
+                  {projectLabel}
+                </span>
+                <ChevronsUpDown
+                  size={14}
+                  className="shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>Workspace pages</DropdownMenuLabel>
+              {workspaces.map((item) => (
+                <DropdownMenuItem asChild key={item.slug}>
+                  <Link
+                    href={`${projectPath}/${item.slug}`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span>{item.label}</span>
+                    {active?.slug === item.slug && (
+                      <Check size={14} aria-hidden="true" />
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/">Workspace entry</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <nav aria-label="Project workspaces">
+        <nav className="workspace-nav" aria-label="Project workspaces">
           {workspaces.map((item) => (
             <Link
               key={item.slug}
@@ -54,7 +110,10 @@ export function AppShell({
           ))}
         </nav>
         <div className="sidebar-footer">
-          <p>Development shell</p>
+          <p className="preview-label">
+            <span aria-hidden="true" />
+            Preview mode
+          </p>
           <p className="text-xs text-muted-foreground">
             Repository and provider status will appear after API integration.
           </p>
@@ -73,9 +132,27 @@ export function AppShell({
           >
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </Button>
-          <span className="text-muted-foreground">Workspace</span>
-          <span aria-hidden="true">/</span>
-          <span>{active?.label ?? "Project"}</span>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/">Workspace</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem className="project-breadcrumb">
+                <BreadcrumbLink asChild>
+                  <Link href={`${projectPath}/overview`} title={projectLabel}>
+                    {projectLabel}
+                  </Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{active?.label ?? "Project"}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <span className="header-note">Backend not connected</span>
         </header>
         <div className="workspace-panels">

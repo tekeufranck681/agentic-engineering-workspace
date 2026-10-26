@@ -122,6 +122,7 @@
     }
   ],
   "keyboard": "Tab skip link and focus outline at both desktop sizes; mobile menu opens, Escape closes and restores focus",
+  "dropdown": "ArrowDown opens seven real navigation items; Escape restores trigger focus; selecting Requirements navigates and updates breadcrumbs",
   "unknownRoute": 404,
   "runtimeExceptions": []
 }

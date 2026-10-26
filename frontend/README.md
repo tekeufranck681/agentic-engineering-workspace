@@ -26,3 +26,9 @@ Authoritative design/source mapping: ../docs/execution/audits/M1-INITIAL-AUDIT.m
 ## Bundler and local storage
 
 Dev and production builds explicitly use Next.js Webpack mode. Turbopack cannot resolve the current external, RAM-backed node_modules symlink because its target lies outside the frontend root. Webpack supports this setup without widening filesystem roots. Once disk space is available, replace the temporary symlink with a normal `npm ci` installation. RAM-backed dependencies disappear on reboot.
+
+## Shared shell direction
+
+Follow the project's engineering UI rules: neutral surfaces, compact controls, clear dividers and restrained blue emphasis (`--primary: #2563EB`). Reference principles: [Vercel Geist](https://vercel.com/geist/introduction), [shadcn breadcrumbs](https://ui.shadcn.com/docs/components/radix/breadcrumb) and [Radix-backed dropdowns](https://ui.shadcn.com/docs/components/radix/dropdown-menu). Kikx's local header, token and UI component structure was inspected as a reference; its brand palette and product flows are not copied. The workspace menu navigates the existing six placeholders; it does not claim to switch persisted projects.
+
+Git workflow: new task branches start from current origin/main. The user creates and merges PRs manually. Never merge origin branches or open PRs through automation.
