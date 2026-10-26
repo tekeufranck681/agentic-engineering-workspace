@@ -4,15 +4,12 @@ export default function Home() {
   return (
     <main className="entry-page">
       <h1>Engineering workspace</h1>
-      <p>
-        The shared frontend shell is ready for screen integration. Project
-        creation and repository connection are not connected yet.
-      </p>
+      <p>Open a saved project to navigate its engineering workspaces.</p>
       <Button asChild>
-        <Link href="/projects/preview/overview">Open shell preview</Link>
+        <Link href="/projects">Browse projects</Link>
       </Button>
       <p className="text-xs text-muted-foreground">
-        Preview routes contain no persisted project or simulated agent activity.
+        Project creation and repository connection follow in the Overview task.
       </p>
     </main>
   );

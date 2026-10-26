@@ -1,0 +1,99 @@
+{
+  "backend": "Actual FastAPI source; isolated temporary SQLite; two clearly named test fixtures",
+  "emptyState": true,
+  "routes": [
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "overview",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "requirements",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "architecture",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "planning",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "runs",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "workspace": "delivery",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "overview",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "requirements",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "architecture",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "planning",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "runs",
+      "projectContext": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "workspace": "delivery",
+      "projectContext": true,
+      "overflow": false
+    }
+  ],
+  "projectSwitchPreservesWorkspace": true,
+  "inspectorEscapeRestoresFocus": true,
+  "mobileNavigationAndInspector": true,
+  "invalidId": 400,
+  "invalidPage": 400,
+  "missingProject": 404,
+  "rootRedirect": 200,
+  "loadingState": true,
+  "runtimeExceptions": []
+}

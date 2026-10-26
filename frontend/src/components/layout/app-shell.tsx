@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef, useState } from "react";
-import { Check, ChevronsUpDown, Code2, Menu, X } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { Code2, Menu, PanelRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -12,14 +12,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import { ProjectSwitcher } from "@/components/layout/project-switcher";
+import { RightInspector } from "@/components/layout/right-inspector";
+import { LoadingState } from "@/components/shared/loading-state";
+import { ErrorState } from "@/components/shared/error-state";
+import { useProject } from "@/lib/api/use-projects";
 import { workspaces } from "@/lib/workspaces";
 export function AppShell({
   projectId,
@@ -33,8 +30,22 @@ export function AppShell({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const active = workspaces.find((item) => pathname.endsWith("/" + item.slug));
-  const projectLabel = projectId === "preview" ? "Shell preview" : projectId;
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const inspectorTrigger = useRef<HTMLButtonElement>(null);
+  const closeInspector = useCallback(() => {
+    setInspectorOpen(false);
+    inspectorTrigger.current?.focus();
+  }, []);
+  const active = workspaces.find(
+    (item) => pathname.split("/")[3] === item.slug,
+  );
+  const preview = projectId === "preview";
+  const projectQuery = useProject(preview ? null : projectId);
+  const project = projectQuery.data;
+  const projectLabel = preview
+    ? "Shell preview"
+    : (project?.name ??
+      (projectQuery.loading ? "Loading project…" : "Project unavailable"));
   const projectPath = `/projects/${encodeURIComponent(projectId)}`;
   return (
     <div
@@ -50,52 +61,17 @@ export function AppShell({
         Skip to workspace
       </a>
       <aside className="sidebar" data-open={menuOpen} id="workspace-navigation">
-        <Link className="brand" href="/">
+        <Link className="brand" href="/projects">
           <Code2 size={18} aria-hidden="true" className="brand-symbol" />
           Engineering workspace
         </Link>
         <div className="project-context">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="workspace-switcher"
-                aria-label="Open workspace navigation"
-              >
-                <span className="workspace-initial" aria-hidden="true">
-                  {projectLabel.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="project-id" title={projectLabel}>
-                  {projectLabel}
-                </span>
-                <ChevronsUpDown
-                  size={14}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuLabel>Workspace pages</DropdownMenuLabel>
-              {workspaces.map((item) => (
-                <DropdownMenuItem asChild key={item.slug}>
-                  <Link
-                    href={`${projectPath}/${item.slug}`}
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    <span>{item.label}</span>
-                    {active?.slug === item.slug && (
-                      <Check size={14} aria-hidden="true" />
-                    )}
-                  </Link>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/">Workspace entry</Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ProjectSwitcher
+            projectId={projectId}
+            projectLabel={projectLabel}
+            workspace={active?.slug ?? "overview"}
+            onNavigate={() => setMenuOpen(false)}
+          />
         </div>
         <nav className="workspace-nav" aria-label="Project workspaces">
           {workspaces.map((item) => (
@@ -112,10 +88,18 @@ export function AppShell({
         <div className="sidebar-footer">
           <p className="preview-label">
             <span aria-hidden="true" />
-            Preview mode
+            {preview
+              ? "Preview mode"
+              : project
+                ? project.status === "active"
+                  ? "Active project"
+                  : "Archived project"
+                : "Project not loaded"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Repository and provider status will appear after API integration.
+            {preview
+              ? "Preview contains no saved project data."
+              : "Repository and provider status appear in their workspaces."}
           </p>
         </div>
       </aside>
@@ -136,7 +120,7 @@ export function AppShell({
             <BreadcrumbList>
               <BreadcrumbItem>
                 <BreadcrumbLink asChild>
-                  <Link href="/">Workspace</Link>
+                  <Link href="/projects">Projects</Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
@@ -153,16 +137,77 @@ export function AppShell({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <span className="header-note">Backend not connected</span>
+          <span className="header-note">
+            {preview
+              ? "Shell preview"
+              : projectQuery.loading
+                ? "Loading project…"
+                : project
+                  ? "Saved project"
+                  : "Project unavailable"}
+          </span>
+          <Button
+            ref={inspectorTrigger}
+            variant="ghost"
+            aria-label="Open project details"
+            aria-expanded={inspectorOpen}
+            disabled={!project}
+            onClick={() => setInspectorOpen((value) => !value)}
+          >
+            <PanelRight size={16} aria-hidden="true" />
+          </Button>
         </header>
         <div className="workspace-panels">
           <main id="workspace-content" tabIndex={-1}>
-            {children}
+            {!preview && projectQuery.loading ? (
+              <LoadingState label="Loading project…" />
+            ) : !preview && projectQuery.error ? (
+              <ErrorState
+                message={projectQuery.error.message}
+                onRetry={projectQuery.retry}
+              />
+            ) : (
+              children
+            )}
           </main>
-          {inspector && (
-            <aside className="inspector" aria-label="Artifact details">
+          {inspectorOpen && project && (
+            <RightInspector title="Project details" onClose={closeInspector}>
+              <dl className="project-details">
+                <div>
+                  <dt>Name</dt>
+                  <dd>{project.name}</dd>
+                </div>
+                <div>
+                  <dt>Project ID</dt>
+                  <dd className="font-mono">{project.id}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{project.status === "active" ? "Active" : "Archived"}</dd>
+                </div>
+                <div>
+                  <dt>Description</dt>
+                  <dd>{project.description ?? "No description provided."}</dd>
+                </div>
+                <div>
+                  <dt>Created</dt>
+                  <dd>
+                    <time dateTime={project.created_at}>
+                      {project.created_at}
+                    </time>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Updated</dt>
+                  <dd>
+                    <time dateTime={project.updated_at}>
+                      {project.updated_at}
+                    </time>
+                  </dd>
+                </div>
+              </dl>
               {inspector}
-            </aside>
+            </RightInspector>
           )}
         </div>
       </div>
