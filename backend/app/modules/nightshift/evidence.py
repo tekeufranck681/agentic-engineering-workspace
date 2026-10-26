@@ -8,8 +8,8 @@ only as a hash plus their length.
 
 Attribution stays honest: a requested routing mode such as ``meterless/auto``
 says nothing about the model that served it. ``attribution()`` prefers the
-runtime's routing receipt, falls back to the response ``model`` field, and
-says which one it used.
+runtime's routing receipt, falls back to the response ``model`` field, says
+which one it used, and never names a routing mode as the answering model.
 """
 
 import hashlib
@@ -18,6 +18,13 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import BaseModel, Field
+
+# Ids under this prefix are routing modes (lanes), never the model that answered.
+ROUTING_MODE_PREFIX = "meterless/"
+
+
+def _names_a_model(model_id: str | None) -> bool:
+    return bool(model_id) and not model_id.startswith(ROUTING_MODE_PREFIX)
 
 
 class RuntimeState(str, Enum):
@@ -31,14 +38,20 @@ class RuntimeState(str, Enum):
 class RuntimeReceipt(BaseModel):
     """Routing attribution from the ``meterless`` object of a chat response.
 
-    Field names follow captures published by other hackathon teams and are
-    all optional until our own live runtime confirms them. ``keys`` records
-    which fields were actually present, so the shape can be verified.
+    Shape confirmed against the live runtime on 2026-10-26 (Nightshift M1-M4
+    app, receipt schema ``meterless.compute_receipt.v1``): ``routed_model`` and
+    ``winning_route.model`` name the model that answered, while
+    ``provider_model`` echoes the requested routing mode, so it is recorded but
+    never used for attribution. ``receipt_envelope`` was null (unsigned), and
+    the nested ``receipt`` carries a prompt preview, which is why only a hash
+    and the key list are kept. ``keys`` records which fields were present.
     """
 
     requested_model: str | None = None
     provider_model: str | None = None
     routed_model: str | None = None
+    winning_route_model: str | None = None
+    winning_route_provider: str | None = None
     receipt_id: str | None = None
     decision_id: str | None = None
     keys: list[str] = Field(default_factory=list)
@@ -49,17 +62,21 @@ class RuntimeReceipt(BaseModel):
         if not isinstance(payload, dict) or not payload:
             return None
 
-        def text(key: str) -> str | None:
-            value = payload.get(key)
+        def text(source: dict, key: str) -> str | None:
+            value = source.get(key)
             return None if value is None else str(value)
 
+        route = payload.get("winning_route")
+        route = route if isinstance(route, dict) else {}
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return cls(
-            requested_model=text("requested_model"),
-            provider_model=text("provider_model"),
-            routed_model=text("routed_model"),
-            receipt_id=text("receipt_id"),
-            decision_id=text("decision_id"),
+            requested_model=text(payload, "requested_model"),
+            provider_model=text(payload, "provider_model"),
+            routed_model=text(payload, "routed_model"),
+            winning_route_model=text(route, "model"),
+            winning_route_provider=text(route, "provider"),
+            receipt_id=text(payload, "receipt_id"),
+            decision_id=text(payload, "decision_id"),
             keys=sorted(str(key) for key in payload),
             sha256=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         )
@@ -107,10 +124,10 @@ class ChatCallEvidence(BaseModel):
     def attribution(self) -> tuple[str | None, str]:
         """(model that answered, where that claim comes from)."""
         if self.receipt is not None:
-            for value in (self.receipt.routed_model, self.receipt.provider_model):
-                if value:
+            for value in (self.receipt.routed_model, self.receipt.winning_route_model):
+                if _names_a_model(value):
                     return value, "runtime receipt"
-        if self.served_model:
+        if _names_a_model(self.served_model):
             return self.served_model, "response model field"
         return None, "not reported by the runtime"
 

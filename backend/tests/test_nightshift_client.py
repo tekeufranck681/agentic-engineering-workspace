@@ -52,10 +52,11 @@ def make_client(handler, **settings_overrides) -> NightshiftClient:
 
 
 def chat_body(**extra) -> dict:
+    # Like the live runtime (2026-10-26), "model" names the model that answered.
     body = {
         "id": "chatcmpl-1",
         "object": "chat.completion",
-        "model": "meterless/auto",
+        "model": "nvidia/nemotron-test",
         "choices": [
             {"index": 0, "message": {"role": "assistant", "content": "NIGHTSHIFT_OK"}, "finish_reason": "stop"}
         ],
@@ -89,11 +90,22 @@ def runtime_handler(models: dict = MODEL_LIST, chat: dict | None = None):
         ("http://192.168.1.20:8088/v1/chat/completions", "http://192.168.1.20:8088/v1"),
         ("http://192.168.1.20:8088/healthz", "http://192.168.1.20:8088/v1"),
         ("  https://mac-mini.local:8090  ", "https://mac-mini.local:8090/v1"),
+        # Hotspot connect link: the token rides in the fragment and must be dropped.
+        ("http://192.168.1.20:8088/connect#k=link-secret-123", "http://192.168.1.20:8088/v1"),
+        ("192.168.1.20:8088/connect?k=link-secret-123", "http://192.168.1.20:8088/v1"),
     ],
 )
 def test_pasted_urls_normalize_to_base_v1(pasted, expected):
     assert normalize_base_url(pasted) == expected
     assert make_settings(base_url=pasted).base_url == expected
+
+
+def test_config_errors_never_echo_the_input():
+    # A secret pasted into the wrong variable must not be printed back.
+    with pytest.raises(ValueError) as caught:
+        make_settings(timeout_seconds="k=link-secret-123")
+    assert "timeout_seconds" in str(caught.value)
+    assert "link-secret-123" not in str(caught.value)
 
 
 def test_missing_and_placeholder_tokens_are_config_errors():
@@ -165,7 +177,7 @@ def test_chat_sends_documented_headers_and_body():
     evidence = result.evidence
     assert evidence.endpoint == f"{BASE}/chat/completions"
     assert evidence.requested_model == "meterless/auto"
-    assert evidence.served_model == "meterless/auto"
+    assert evidence.served_model == "nvidia/nemotron-test"
     assert evidence.finish_reason == "stop"
     assert (evidence.usage.prompt_tokens, evidence.usage.completion_tokens) == (12, 3)
     assert len(evidence.prompt_sha256) == 64
@@ -185,13 +197,16 @@ def test_content_part_replies_are_joined():
 
 
 def test_attribution_prefers_the_runtime_receipt():
+    # Trimmed meterless.compute_receipt.v1 as returned live on 2026-10-26.
     receipt = {
+        "schema": "meterless.compute_receipt.v1",
         "requested_model": "meterless/auto",
-        "provider_model": "nvidia/nemotron-test",
+        "provider_model": "meterless/auto",
         "routed_model": "nvidia/nemotron-test",
+        "winning_route": {"kind": "cloud", "model": "nvidia/nemotron-test", "provider": "nvidia", "tier": "A"},
         "receipt_id": "rcpt-1",
         "decision_id": "dec-1",
-        "signature": "c2lnbmF0dXJl",
+        "receipt_envelope": None,
     }
     with make_client(runtime_handler(chat=chat_body(meterless=receipt))) as client:
         evidence = client.chat("meterless/auto", [ChatMessage(role="user", content="hi")]).evidence
@@ -199,16 +214,32 @@ def test_attribution_prefers_the_runtime_receipt():
     assert evidence.receipt is not None
     assert evidence.receipt.receipt_id == "rcpt-1"
     assert evidence.receipt.decision_id == "dec-1"
-    assert "signature" in evidence.receipt.keys
+    assert evidence.receipt.provider_model == "meterless/auto"
+    assert evidence.receipt.winning_route_model == "nvidia/nemotron-test"
+    assert evidence.receipt.winning_route_provider == "nvidia"
+    assert "receipt_envelope" in evidence.receipt.keys
     assert len(evidence.receipt.sha256) == 64
     assert evidence.attribution() == ("nvidia/nemotron-test", "runtime receipt")
+
+
+def test_attribution_never_names_a_routing_mode():
+    # provider_model echoes the requested lane, so it never counts as attribution.
+    receipt = {"provider_model": "meterless/auto", "winning_route": {"model": "nvidia/nemotron-test"}}
+    with make_client(runtime_handler(chat=chat_body(model="meterless/auto", meterless=receipt))) as client:
+        evidence = client.chat("meterless/auto", [ChatMessage(role="user", content="hi")]).evidence
+    assert evidence.attribution() == ("nvidia/nemotron-test", "runtime receipt")
+
+    lanes_only = chat_body(model="meterless/auto", meterless={"provider_model": "meterless/auto"})
+    with make_client(runtime_handler(chat=lanes_only)) as client:
+        evidence = client.chat("meterless/auto", [ChatMessage(role="user", content="hi")]).evidence
+    assert evidence.attribution() == (None, "not reported by the runtime")
 
 
 def test_attribution_without_receipt_reports_its_source():
     with make_client(runtime_handler()) as client:
         evidence = client.chat("meterless/auto", [ChatMessage(role="user", content="hi")]).evidence
     assert evidence.receipt is None
-    assert evidence.attribution() == ("meterless/auto", "response model field")
+    assert evidence.attribution() == ("nvidia/nemotron-test", "response model field")
 
     body = chat_body()
     del body["model"]
