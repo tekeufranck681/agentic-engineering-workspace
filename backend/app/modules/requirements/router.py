@@ -5,7 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.domain.errors import TransitionError
-from app.domain.fakes import InMemoryRepository, FakeLLM
+from app.domain.fakes import InMemoryRepository
+from app.domain.ports import LLMPort
+from app.modules.model_gateway.api import requirements_model
 from app.modules.requirements.service import RequirementsService
 from app.modules.requirements.schemas import (
     RequirementCreateRequest,
@@ -22,13 +24,13 @@ from app.modules.requirements.schemas import (
 router = APIRouter(prefix="/requirements", tags=["requirements"])
 
 
-def get_service() -> RequirementsService:
-    """Dependency that builds a service with in-memory repo and fake LLM.
+def get_service(llm: LLMPort = Depends(requirements_model)) -> RequirementsService:
+    """Dependency that builds a service with in-memory repo and the real model.
 
     M2 replaces InMemoryRepository with a real RepositoryPort.
-    M3 replaces FakeLLM with a real LLMPort.
+    The LLMPort is M3's ModelGateway bound to requirements.analyze_input (ENG-008);
+    tests override ``requirements_model``.
     """
-    llm = FakeLLM(responses={})
     repo = InMemoryRepository()
     return RequirementsService(llm=llm, repo=repo)
 

@@ -29,11 +29,12 @@ from app.domain.acceptance_criterion import AcceptanceCriterion, Verification
 # Intermediate LLM response schemas (what the model returns)
 # ---------------------------------------------------------------------------
 
+# Enum-typed fields put the allowed values into the JSON schema the model sees.
 class LLMRequirementSpec(BaseModel):
     title: str
     description: str
-    type: str  # "functional" | "non_functional"
-    priority: str  # "must" | "should" | "could"
+    type: RequirementType
+    priority: Priority
 
 
 class LLMRequirementsAnalysis(BaseModel):
@@ -58,9 +59,9 @@ class LLMACSpec(BaseModel):
     given: list[str]
     when: list[str]
     then: list[str]
-    verification_kind: str = "unit"
+    verification_kind: VerificationKind = VerificationKind.unit
     verification_hint: str | None = None
-    priority: str = "must"
+    priority: Priority = Priority.must
 
 
 class LLMACGeneration(BaseModel):
