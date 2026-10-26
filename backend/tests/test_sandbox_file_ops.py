@@ -4,6 +4,9 @@ The fake sandbox runs commands for real in a temporary git repository, so
 real git and real pytest are exercised; only the E2B transport is replaced.
 """
 
+import os
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +47,14 @@ class CommandFailed(Exception):
 
 
 class LocalSandbox:
+    """Runs the workspace's commands on this machine, portably (Linux, macOS, Windows).
+
+    The real sandbox is a Linux shell. Here no shell is used: the command is
+    split with shlex, ``VAR=value`` prefixes become environment variables, the
+    two coreutils the workspace uses (``stat -c %s``, ``mkdir -p``) are done in
+    Python, and git / pytest run as real processes.
+    """
+
     def __init__(self, root: Path):
         self.root = root
         self.commands = SimpleNamespace(run=self._run)
@@ -54,17 +65,33 @@ class LocalSandbox:
         return self.root / path[len(REPO_DIR):].lstrip("/")
 
     def _run(self, cmd, cwd=None, timeout=None, envs=None):
-        cmd = cmd.replace("python3", sys.executable)
-        proc = subprocess.run(cmd, shell=True, cwd=self._map(cwd), capture_output=True, text=True, timeout=timeout)
+        cwd_path = self._map(cwd)
+        argv = shlex.split(cmd)
+        env = {**os.environ, **(envs or {})}
+        while argv and re.fullmatch(r"[A-Z_][A-Z0-9_]*=.*", argv[0]):
+            key, _, value = argv.pop(0).partition("=")
+            env[key] = value
+        if argv[:3] == ["stat", "-c", "%s"]:
+            target = cwd_path / argv[3]
+            if not target.is_file():
+                raise CommandFailed(1, "", f"stat: cannot stat '{argv[3]}'")
+            return SimpleNamespace(exit_code=0, stdout=f"{target.stat().st_size}\n", stderr="")
+        if argv[:2] == ["mkdir", "-p"]:
+            (cwd_path / argv[2]).mkdir(parents=True, exist_ok=True)
+            return SimpleNamespace(exit_code=0, stdout="", stderr="")
+        if argv[0] == "python3":
+            argv[0] = sys.executable
+        proc = subprocess.run(argv, cwd=cwd_path, env=env, capture_output=True, text=True, timeout=timeout)
         if proc.returncode != 0:
             raise CommandFailed(proc.returncode, proc.stdout, proc.stderr)
         return SimpleNamespace(exit_code=0, stdout=proc.stdout, stderr=proc.stderr)
 
     def _read(self, path):
-        return self._map(path).read_text()
+        return self._map(path).read_text(encoding="utf-8", newline="")
 
     def _write(self, path, data):
-        self._map(path).write_text(data)
+        # newline="" keeps \n on Windows too, like the Linux sandbox
+        self._map(path).write_text(data, encoding="utf-8", newline="")
 
     def kill(self):
         return True
@@ -77,10 +104,10 @@ def git(root: Path, *args: str) -> str:
 @pytest.fixture()
 def workspace(tmp_path):
     (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "__init__.py").write_text("")
-    (tmp_path / "app" / "payment.py").write_text(BUGGY)
-    (tmp_path / "README.md").write_text("# demo\n")
+    for rel, text in (("app/__init__.py", ""), ("app/payment.py", BUGGY), ("README.md", "# demo\n")):
+        (tmp_path / rel).write_text(text, encoding="utf-8", newline="")
     git(tmp_path, "init", "-q", "-b", "main")
+    git(tmp_path, "config", "core.autocrlf", "false")
     git(tmp_path, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
     git(tmp_path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base")
     ws = Workspace(LocalSandbox(tmp_path), SandboxSettings(api_key="k", max_file_bytes=5_000))
