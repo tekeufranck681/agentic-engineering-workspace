@@ -7,9 +7,10 @@ to one capability and is the LLMPort that M4's services receive. Every call
 records a ModelCallReceipt, failures included. Provider calls are blocking
 HTTP, so they run in a worker thread to keep the event loop free.
 
-Deliberately not here: retries and budgets (ENG-043), prompt versions and
-bounded output repair (ENG-028). A failure surfaces as a typed
-ModelGatewayError; nothing falls back to another provider silently.
+One call per request: versioned prompts, bounded output repair and retries
+live in the capability runtime (``app.modules.capabilities``, ENG-028), which
+capabilities should use; budgets come with ENG-043. A failure surfaces as a
+typed ModelGatewayError; nothing falls back to another provider silently.
 """
 
 import asyncio
@@ -19,8 +20,9 @@ import logging
 import re
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -49,6 +51,12 @@ _MAX_ERROR_DETAILS = 5
 
 class GenerationResult(BaseModel):
     text: str
+    receipt: ModelCallReceipt
+
+
+@dataclass(frozen=True)
+class StructuredResult(Generic[T]):
+    value: T
     receipt: ModelCallReceipt
 
 
@@ -101,10 +109,29 @@ class ModelGateway:
         self, prompt: str, schema: type[T], *, capability: str | None = None
     ) -> T:
         """Completion parsed and validated into ``schema`` (M4's LLMPort contract)."""
-        schema_json = json.dumps(schema.model_json_schema(), separators=(",", ":"))
-        messages = _messages(prompt, STRUCTURED_INSTRUCTIONS.format(schema=schema_json))
+        return (await self.structured_call(prompt, schema, capability=capability)).value
+
+    async def structured_call(
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        capability: str | None = None,
+        instructions: str | None = None,
+    ) -> "StructuredResult[T]":
+        """``generate_structured`` that also returns the call's receipt.
+
+        ``instructions`` (a capability's versioned system prompt) precede the
+        JSON Schema instructions. A raised ModelGatewayError carries the failed
+        call's receipt in ``error.receipt``.
+        """
+        system = STRUCTURED_INSTRUCTIONS.format(
+            schema=json.dumps(schema.model_json_schema(), separators=(",", ":"))
+        )
+        if instructions:
+            system = f"{instructions}\n\n{system}"
         reply, receipt = await self._call(
-            messages, capability=capability, schema_name=schema.__name__
+            _messages(prompt, system), capability=capability, schema_name=schema.__name__
         )
         try:
             data = extract_json(reply.content)
@@ -113,9 +140,10 @@ class ModelGateway:
         try:
             value = schema.model_validate(data)
         except ValidationError as exc:
-            raise self._structured_failure(receipt, schema, _summarize(exc), reply) from exc
-        self._record(receipt.model_copy(update={"structured_valid": True}))
-        return value
+            raise self._structured_failure(receipt, schema, summarize_validation_error(exc), reply) from exc
+        receipt = receipt.model_copy(update={"structured_valid": True})
+        self._record(receipt)
+        return StructuredResult(value=value, receipt=receipt)
 
     # ---------------------------------------------------------------- internals
 
@@ -149,16 +177,15 @@ class ModelGateway:
                 temperature=self._settings.temperature,
             )
         except ModelGatewayError as exc:
-            self._record(
-                ModelCallReceipt(
-                    **common,
-                    outcome="error",
-                    latency_ms=int((time.monotonic() - started) * 1000),
-                    error_kind=exc.kind,
-                    error_code=exc.code,
-                    retryable=exc.retryable,
-                )
+            exc.receipt = ModelCallReceipt(
+                **common,
+                outcome="error",
+                latency_ms=int((time.monotonic() - started) * 1000),
+                error_kind=exc.kind,
+                error_code=exc.code,
+                retryable=exc.retryable,
             )
+            self._record(exc.receipt)
             raise
         receipt = ModelCallReceipt(
             **common,
@@ -188,16 +215,15 @@ class ModelGateway:
             f"reply from {receipt.answered_by or 'the model'} is not a valid {schema.__name__}: {reason}",
             reply_text=reply.content,
         )
-        self._record(
-            receipt.model_copy(
-                update={
-                    "outcome": "error",
-                    "structured_valid": False,
-                    "error_kind": error.kind,
-                    "retryable": error.retryable,
-                }
-            )
+        error.receipt = receipt.model_copy(
+            update={
+                "outcome": "error",
+                "structured_valid": False,
+                "error_kind": error.kind,
+                "retryable": error.retryable,
+            }
         )
+        self._record(error.receipt)
         return error
 
     def _record(self, receipt: ModelCallReceipt) -> None:
@@ -270,7 +296,7 @@ def _digest(messages: list[ProviderMessage]) -> tuple[str, int]:
     )
 
 
-def _summarize(exc: ValidationError) -> str:
+def summarize_validation_error(exc: ValidationError) -> str:
     """Field paths and messages only: never the offending input values."""
     errors = exc.errors()
     parts = [

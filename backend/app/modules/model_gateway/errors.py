@@ -1,10 +1,15 @@
 """Typed ModelGateway failures, independent of the provider behind it.
 
 Capabilities catch these, never provider exceptions. ``kind`` is a stable code
-for API errors and receipts; ``retryable`` marks failures a retry policy
-(ENG-043) may repeat, while everything else needs a fix. Messages never carry
-the runtime token or prompt text.
+for API errors and receipts; ``retryable`` marks failures a retry policy may
+repeat, while everything else needs a fix. Messages never carry the runtime
+token or prompt text.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.model_gateway.receipts import ModelCallReceipt
 
 
 class ModelGatewayError(Exception):
@@ -12,6 +17,8 @@ class ModelGatewayError(Exception):
 
     kind = "model_error"
     retryable = False
+    receipt: "ModelCallReceipt | None" = None
+    """Set by the gateway: the receipt of the failed call."""
 
     def __init__(self, message: str, *, retryable: bool | None = None, code: str | None = None) -> None:
         super().__init__(message)

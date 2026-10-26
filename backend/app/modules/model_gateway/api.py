@@ -20,14 +20,11 @@ from app.modules.model_gateway.errors import (
     ModelRateLimitedError,
     ModelUnavailableError,
 )
-from app.modules.model_gateway.gateway import CapabilityModel, ModelGateway
+from app.modules.model_gateway.gateway import ModelGateway
 from app.modules.model_gateway.provider import NightshiftProvider
 from app.modules.model_gateway.receipts import ReceiptSink
 from app.modules.nightshift.config import NightshiftSettings
 from app.modules.nightshift.errors import NightshiftConfigError
-
-# Logical capability names from the MVP feature lock (§25).
-REQUIREMENTS_CAPABILITY = "requirements.analyze_input"
 
 # The model dependency is down or misconfigured: 503. The model or provider
 # produced something unusable: 502.
@@ -54,13 +51,9 @@ def build_model_gateway(
 
 @lru_cache
 def get_model_gateway() -> ModelGateway:
-    """Process-wide gateway (FastAPI dependency). A failed build is not cached."""
+    """Process-wide gateway. A failed build is not cached. Capabilities reach it
+    through the capability runtime (``app.modules.capabilities.api``)."""
     return build_model_gateway()
-
-
-def requirements_model() -> CapabilityModel:
-    """LLMPort for M4's requirements service."""
-    return get_model_gateway().for_capability(REQUIREMENTS_CAPABILITY)
 
 
 def install_model_error_handlers(app: FastAPI) -> None:

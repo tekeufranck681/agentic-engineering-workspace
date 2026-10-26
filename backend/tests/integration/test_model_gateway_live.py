@@ -5,21 +5,18 @@ the environment or the repo-root .env, so run it on the backend host:
 
     NIGHTSHIFT_LIVE=1 python -m pytest tests/integration -q
 
-A status probe and three small model calls, the last one through M4's real
-requirements service.
+A status probe and two small model calls. The requirements flow runs through
+the capability runtime in test_capability_runtime_live.py.
 """
 
 import os
-import uuid
 
 import pytest
 from pydantic import BaseModel
 
-from app.domain.fakes import InMemoryRepository
-from app.modules.model_gateway.api import REQUIREMENTS_CAPABILITY, build_model_gateway
-from app.modules.model_gateway.errors import ModelGatewayError
+from app.modules.capabilities.registry import REQUIREMENTS_ANALYZE
+from app.modules.model_gateway.api import build_model_gateway
 from app.modules.model_gateway.receipts import ModelCallReceipt
-from app.modules.requirements.service import RequirementsService
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("NIGHTSHIFT_LIVE") != "1", reason="set NIGHTSHIFT_LIVE=1 to call the real Nightshift runtime"
@@ -53,7 +50,7 @@ def assert_attributed(receipt: ModelCallReceipt) -> None:
 async def test_health_lists_the_routing_lanes(gateway):
     health = await gateway.health()
     assert (health.provider, health.state) == ("nightshift", "online")
-    assert gateway.lane_for(REQUIREMENTS_CAPABILITY) in health.model_ids
+    assert gateway.lane_for(REQUIREMENTS_ANALYZE) in health.model_ids
 
 
 async def test_generate_on_the_default_lane(gateway):
@@ -68,18 +65,3 @@ async def test_generate_structured(gateway):
     )
     assert verdict.is_billing_related is True
     assert_attributed(gateway.receipts.recent()[0])
-
-
-async def test_requirements_analysis_runs_on_the_real_model(gateway):
-    service = RequirementsService(
-        llm=gateway.for_capability(REQUIREMENTS_CAPABILITY), repo=InMemoryRepository()
-    )
-    try:
-        requirements_set, requirements = await service.analyze_project(uuid.uuid4(), DEMO_BRIEF)
-    except ModelGatewayError as exc:  # real-model variance or a provider limit: say which
-        pytest.fail(f"{exc.kind} (retryable={exc.retryable}): {exc}")
-
-    assert requirements and requirements_set.members
-    receipt = gateway.receipts.recent()[0]
-    assert (receipt.capability, receipt.structured_valid) == (REQUIREMENTS_CAPABILITY, True)
-    assert_attributed(receipt)
