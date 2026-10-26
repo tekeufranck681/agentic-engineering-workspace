@@ -12,6 +12,8 @@ from app.modules.persistence.router import router as persistence_router
 from app.modules.requirements.router import router as requirements_router
 from app.modules.architecture.router import router as architecture_router
 from app.modules.planning.router import router as planning_router
+from app.modules.runs.sse import router as runs_sse_router
+from app.modules.runs.router import router as runs_router
 
 
 def create_app() -> FastAPI:
@@ -31,6 +33,8 @@ def create_app() -> FastAPI:
     app.include_router(requirements_router)
     app.include_router(architecture_router)
     app.include_router(planning_router)
+    app.include_router(runs_router)
+    app.include_router(runs_sse_router)
     return app
 
 
