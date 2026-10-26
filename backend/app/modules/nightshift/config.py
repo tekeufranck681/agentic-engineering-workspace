@@ -2,11 +2,14 @@
 
 Values come from the environment (or the local .env file) and never from
 prompts or code. The runtime token is wrapped in SecretStr so it cannot leak
-through reprs or logs. The token lives in Nightshift's state directory as
-``proxy-token``; copy it into the local .env only.
+through reprs or logs, and validation errors never echo input values. The app
+shows the token under Console > API key; the Mac M1-M4 app also keeps it in
+its state directory as ``runtime-token`` (the provider guide calls the file
+``proxy-token``). Copy it into the local .env only.
 """
 
 import re
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import find_dotenv
 from pydantic import Field, SecretStr, field_validator
@@ -18,9 +21,10 @@ DEFAULT_BASE_URL = "http://127.0.0.1:8088/v1"
 DEFAULT_APP_ID = "agentic-engineering-workspace"
 PLACEHOLDER_TOKEN = "rt-local"
 
-# Paths the provider guide says a pasted URL may end with. Longest first so
-# "/v1/models" is stripped whole instead of leaving "/v1" behind.
-_PASTED_SUFFIXES = ("/v1/chat/completions", "/v1/models", "/healthz", "/v1")
+# Paths a pasted URL may end with: the provider guide's forms plus the hotspot
+# connect link. Longest first so "/v1/models" is stripped whole instead of
+# leaving "/v1" behind.
+_PASTED_SUFFIXES = ("/v1/chat/completions", "/v1/models", "/healthz", "/connect", "/v1")
 _APP_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 # Resolve .env by walking upward from the working directory, so the module
@@ -32,15 +36,19 @@ def normalize_base_url(raw: str) -> str:
     """Normalize a pasted runtime URL to ``<scheme>://<host>[:port]/v1``.
 
     Accepts the forms the provider guide lists: with or without a scheme,
-    ending in /v1, /v1/chat/completions, /v1/models or /healthz. Never
-    produces /v1/v1.
+    ending in /v1, /v1/chat/completions, /v1/models or /healthz, and the
+    hotspot connect link ``http://<host>:8088/connect#k=<token>``. Query and
+    fragment are always dropped: the connect link carries the token there, and
+    the token belongs in NIGHTSHIFT_TOKEN, never in a URL that gets printed
+    and recorded as evidence. Never produces /v1/v1.
     """
     url = raw.strip()
     if not url:
         raise ValueError("base URL is empty")
     if "://" not in url:
         url = f"http://{url}"
-    url = url.rstrip("/")
+    parts = urlsplit(url)
+    url = urlunsplit((parts.scheme, parts.netloc, parts.path, "", "")).rstrip("/")
     for suffix in _PASTED_SUFFIXES:
         if url.endswith(suffix):
             url = url[: -len(suffix)].rstrip("/")
@@ -52,7 +60,11 @@ class NightshiftSettings(BaseSettings):
     """Connection settings for the Meterless Runtime served by Nightshift."""
 
     model_config = SettingsConfigDict(
-        env_prefix="NIGHTSHIFT_", env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
+        env_prefix="NIGHTSHIFT_",
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+        hide_input_in_errors=True,  # a misplaced secret is never echoed in a CONFIG error
     )
 
     base_url: str = DEFAULT_BASE_URL
@@ -60,7 +72,8 @@ class NightshiftSettings(BaseSettings):
     machine's LAN address (hotspot mode), not localhost."""
 
     token: SecretStr | None = None
-    """Runtime token from Nightshift's ``<stateDir>/proxy-token``. Bearer credential."""
+    """Runtime API key (Nightshift Console > API key, or ``runtime-token`` in the
+    Mac app's state directory). Bearer credential."""
 
     app_id: str = DEFAULT_APP_ID
     """Stable lowercase id sent as ``meterless-app`` on every request."""
@@ -97,13 +110,13 @@ class NightshiftSettings(BaseSettings):
         token = self.token.get_secret_value().strip() if self.token else ""
         if not token:
             raise NightshiftConfigError(
-                "NIGHTSHIFT_TOKEN is not set: copy the runtime token from "
-                "Nightshift's <stateDir>/proxy-token into the local .env only"
+                "NIGHTSHIFT_TOKEN is not set: copy the runtime API key "
+                "(Nightshift Console > API key) into the local .env only"
             )
         if token == PLACEHOLDER_TOKEN:
             raise NightshiftConfigError(
                 f"NIGHTSHIFT_TOKEN is the placeholder {PLACEHOLDER_TOKEN!r}, which the "
-                "runtime rejects; use the real token from <stateDir>/proxy-token"
+                "runtime rejects; use the real API key from Nightshift Console > API key"
             )
 
     def bearer_token(self) -> str:
