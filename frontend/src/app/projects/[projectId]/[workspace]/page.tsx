@@ -30,7 +30,7 @@ export default async function WorkspacePage({
           </div>
           <div>
             <dt>Displayed data</dt>
-            <dd>No project data loaded</dd>
+            <dd>No workspace artifacts loaded</dd>
           </div>
         </dl>
       </section>

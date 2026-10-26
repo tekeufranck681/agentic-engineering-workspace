@@ -7,5 +7,9 @@ export default async function ProjectLayout({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  return <AppShell projectId={projectId}>{children}</AppShell>;
+  return (
+    <AppShell key={projectId} projectId={projectId}>
+      {children}
+    </AppShell>
+  );
 }
