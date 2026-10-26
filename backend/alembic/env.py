@@ -18,6 +18,9 @@ from app.core.db import Base
 
 # Module model imports: registering metadata for autogenerate.
 import app.modules.persistence.models  # noqa: F401
+import app.modules.persistence.requirements_models  # noqa: F401
+import app.modules.persistence.run_models  # noqa: F401
+import app.modules.persistence.evidence_models  # noqa: F401  (ENG-037)
 
 config = context.config
 
