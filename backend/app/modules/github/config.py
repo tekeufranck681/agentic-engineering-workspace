@@ -39,10 +39,24 @@ class GitHubSettings(BaseSettings):
 
     timeout_seconds: float = Field(default=15.0, gt=0, le=120)
 
+    agent_branch_prefix: str = "aew/"
+    """The agent may only create, push to, open PRs from and delete branches
+    under this prefix. The default branch is never written."""
+
+    max_file_bytes: int = Field(default=200_000, ge=1_000, le=5_000_000)
+    """Largest file the adapter will read or write."""
+
     @field_validator("api_url")
     @classmethod
     def strip_slash(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @field_validator("agent_branch_prefix")
+    @classmethod
+    def prefix_is_a_namespace(cls, value: str) -> str:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*/", value):
+            raise ValueError("agent_branch_prefix must look like 'aew/'")
+        return value
 
     @field_validator("demo_repo", "product_repo")
     @classmethod

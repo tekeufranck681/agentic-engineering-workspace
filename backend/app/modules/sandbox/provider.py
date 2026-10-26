@@ -20,12 +20,13 @@ File operations, diffs and the scoped tool surface come in ENG-025/ENG-020.
 """
 
 import base64
+import posixpath
 import re
 import shlex
 import time
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
@@ -41,6 +42,28 @@ _SHA_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
 
 class WorkspaceError(Exception):
     """The workspace could not be prepared or used. Its sandbox is already killed."""
+
+
+class WorkspacePathError(Exception):
+    """A file operation was refused locally (unsafe path or size). The workspace stays usable."""
+
+
+_FORBIDDEN_PREFIXES = (".git/", ".github/workflows/")
+
+
+def check_repo_path(path: str) -> str:
+    """Normalize a repo-relative path; refuse escapes, .git and CI workflow files.
+
+    Same rules as the GitHub adapter, so anything written here can be committed.
+    """
+    if not path or path.startswith("/") or "\\" in path or "\x00" in path:
+        raise WorkspacePathError(f"path must be repo-relative: {path!r}")
+    normalized = posixpath.normpath(path)
+    if normalized.startswith("..") or normalized in (".", ".git"):
+        raise WorkspacePathError(f"path escapes the repository: {path!r}")
+    if any(normalized.startswith(prefix) for prefix in _FORBIDDEN_PREFIXES):
+        raise WorkspacePathError(f"path is protected: {path!r}")
+    return normalized
 
 
 class WorkspaceState(StrEnum):
@@ -96,6 +119,74 @@ class CommandResult(BaseModel):
     @property
     def ok(self) -> bool:
         return self.exit_code == 0 and not self.timed_out
+
+
+_SELECTOR_PATTERN = re.compile(r"^[A-Za-z0-9_./-]{1,300}(::[A-Za-z0-9_\[\]./-]{1,200})*$")
+_SUMMARY_COUNT = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed|deselected)")
+# Build and cache artifacts never belong in the agent's change set.
+_JUNK_EXCLUDES = " ".join(
+    f"':(exclude,glob){p}'" for p in ("**/__pycache__/**", "**/*.pyc", ".pytest_cache/**", "**/.pytest_cache/**")
+)
+TestOutcome = Literal["passed", "failed", "no_tests", "error", "timeout"]
+
+
+class TestRunResult(BaseModel):
+    """Objective result of one pytest run inside the sandbox."""
+
+    __test__ = False  # not a pytest test class
+
+    selector: str | None
+    outcome: TestOutcome
+    exit_code: int | None
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    skipped: int = 0
+    failing_tests: list[str] = Field(default_factory=list)
+    output_tail: str = ""
+    duration_ms: int
+
+    @classmethod
+    def from_command(cls, result: CommandResult, selector: str | None) -> "TestRunResult":
+        text = result.stdout + "\n" + result.stderr
+        counts = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+        summary = next((line for line in reversed(text.splitlines()) if _SUMMARY_COUNT.search(line)), "")
+        for number, word in _SUMMARY_COUNT.findall(summary):
+            key = "errors" if word.startswith("error") else word
+            if key in counts:
+                counts[key] = int(number)
+        failing = []
+        for line in text.splitlines():
+            if line.startswith(("FAILED ", "ERROR ")):
+                failing.append(line.split(" ", 1)[1].split(" - ", 1)[0].strip())
+        # pytest exit codes: 0 all passed, 1 some failed, 5 none collected, others = usage/internal error
+        if result.timed_out:
+            outcome: TestOutcome = "timeout"
+        elif result.exit_code == 0:
+            outcome = "passed"
+        elif result.exit_code == 1:
+            outcome = "failed"
+        elif result.exit_code == 5:
+            outcome = "no_tests"
+        else:
+            outcome = "error"
+        return cls(
+            selector=selector, outcome=outcome, exit_code=result.exit_code, failing_tests=failing,
+            output_tail=text.strip()[-4000:], duration_ms=result.duration_ms, **counts,
+        )
+
+
+class FileChange(BaseModel):
+    status: str
+    """git name-status letter: A added, M modified, D deleted."""
+    path: str
+
+
+class ChangeSet(BaseModel):
+    base_sha: str | None
+    changes: list[FileChange]
+    patch: str
+    truncated: bool = False
 
 
 class SandboxProvider(Protocol):
@@ -156,6 +247,69 @@ class Workspace:
             timed_out=timed_out,
             truncated=cut_out or cut_err,
         )
+
+    # -- files, tests, diffs (ENG-025) ----------------------------------
+    def _require_ready(self) -> None:
+        if self.state is not WorkspaceState.READY:
+            raise WorkspaceError(f"workspace is {self.state.value}, not ready")
+
+    def read_file(self, path: str) -> str:
+        self._require_ready()
+        rel = check_repo_path(path)
+        size = self._exec(f"stat -c %s {shlex.quote(rel)}", cwd=self.repo_dir)
+        if not size.ok:
+            raise WorkspacePathError(f"{rel} does not exist")
+        if int(size.stdout.strip() or 0) > self._settings.max_file_bytes:
+            raise WorkspacePathError(f"{rel} is larger than {self._settings.max_file_bytes} bytes")
+        return self._sandbox.files.read(f"{self.repo_dir}/{rel}")
+
+    def write_file(self, path: str, text: str) -> str:
+        self._require_ready()
+        rel = check_repo_path(path)
+        if len(text.encode()) > self._settings.max_file_bytes:
+            raise WorkspacePathError(f"{rel} is larger than {self._settings.max_file_bytes} bytes")
+        parent = posixpath.dirname(rel)
+        if parent:
+            made = self._exec(f"mkdir -p {shlex.quote(parent)}", cwd=self.repo_dir)
+            if not made.ok:
+                raise WorkspacePathError(f"cannot create directory {parent}")
+        self._sandbox.files.write(f"{self.repo_dir}/{rel}", text)
+        return rel
+
+    def run_tests(self, selector: str | None = None, timeout: int | None = None) -> "TestRunResult":
+        self._require_ready()
+        target = ""
+        if selector:
+            if not _SELECTOR_PATTERN.fullmatch(selector):
+                raise WorkspacePathError(f"invalid test selector {selector!r}")
+            file_part, _, rest = selector.partition("::")
+            target = check_repo_path(file_part) + (f"::{rest}" if rest else "")
+        command = "PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q -rfE --no-header -p no:cacheprovider"
+        if target:
+            command += f" {shlex.quote(target)}"
+        return TestRunResult.from_command(self.run(command, timeout=timeout), selector)
+
+    def diff(self) -> "ChangeSet":
+        """Every change since the base commit, untracked files included."""
+        self._require_ready()
+        staged = self._exec(f"git add -A -- . {_JUNK_EXCLUDES}", cwd=self.repo_dir)
+        if not staged.ok:
+            raise WorkspaceError(f"git add failed: {staged.stderr.strip()[:200]}")
+        names = self._exec("git diff --cached --name-status --no-renames", cwd=self.repo_dir)
+        patch = self._exec("git diff --cached --no-renames --no-color", cwd=self.repo_dir)
+        changes = []
+        for line in names.stdout.splitlines():
+            status, _, path = line.partition("\t")
+            if path:
+                changes.append(FileChange(status=status[:1], path=path))
+        return ChangeSet(base_sha=self.base_sha, changes=changes, patch=patch.stdout, truncated=patch.truncated)
+
+    def collect_changes(self) -> tuple[dict[str, str], list[str]]:
+        """Contents to commit and paths to delete, ready for GitHubRepoClient.commit_files."""
+        change_set = self.diff()
+        files = {c.path: self.read_file(c.path) for c in change_set.changes if c.status != "D"}
+        deletions = [c.path for c in change_set.changes if c.status == "D"]
+        return files, deletions
 
     def _redact(self, text: str) -> str:
         for secret in self._secrets:
