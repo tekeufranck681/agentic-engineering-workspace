@@ -30,6 +30,9 @@ class SandboxSettings(BaseSettings):
     max_output_chars: int = Field(default=20_000, ge=1_000, le=1_000_000)
     """Per-stream cap on captured command output; the tail is kept."""
 
+    max_file_bytes: int = Field(default=200_000, ge=1_000, le=5_000_000)
+    """Largest file the agent may read or write in the workspace."""
+
     @classmethod
     def from_env(cls) -> "SandboxSettings":
         try:
