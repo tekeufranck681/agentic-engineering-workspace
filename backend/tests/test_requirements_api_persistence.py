@@ -151,3 +151,23 @@ def test_versions_stay_fetchable_individually(persisted_client, session: Session
     ).scalar_one()
     assert v1_status == "draft"
     assert latest_status == "approved"
+
+
+def test_set_read_and_transitions_are_scoped_to_the_real_project(persisted_client, session: Session):
+    """Regression: read/approve/lock resolved every set against the nil project."""
+    project = Project(name="real-project", description=None)
+    session.add(project)
+    session.commit()
+    pid = str(project.id)
+    created = persisted_client.post("/requirements/analyze", json={"project_id": pid, "brief": "Billing"})
+    assert created.status_code == 200, created.text
+    set_id = created.json()["set"]["id"]
+
+    assert persisted_client.get(f"/requirements/set/{set_id}").status_code == 404
+    assert persisted_client.get(f"/requirements/set/{set_id}", params={"project_id": pid}).status_code == 200
+    approved = persisted_client.post(f"/requirements/set/{set_id}/approve", json={"approved_by": "m1", "project_id": pid})
+    assert approved.status_code == 200, approved.text
+    locked = persisted_client.post(f"/requirements/set/{set_id}/lock", json={"locked_by": "m1", "project_id": pid})
+    assert locked.status_code == 200, locked.text
+    assert locked.json()["set"]["status"] == "locked"
+    assert locked.json()["set"]["project_id"] == pid
