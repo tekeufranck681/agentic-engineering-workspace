@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { rememberArtifact } from "@/lib/recent-artifacts";
 import { ApiError } from "@/lib/api/client";
 import type { ArchitectureResult } from "@/lib/api/architecture-contract";
 import { architectureService } from "@/services/architectureService";
@@ -23,6 +24,7 @@ export const useArchitectureStore = create<Store>((set, get) => {
             const data = await request();
             if (data.architecture.project_id !== projectId || data.decisions.some(d => d.project_id !== projectId) || data.contracts.some(c => c.project_id !== projectId))
                 throw new ApiError(502, "The response belongs to another project. No records were displayed.", command === "generate");
+            rememberArtifact(projectId, "arch", data.architecture.id);
             set(s => ({ entries: { ...s.entries, [projectId]: { data } } }));
         }
         catch (e) {

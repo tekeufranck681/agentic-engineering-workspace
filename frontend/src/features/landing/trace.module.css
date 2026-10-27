@@ -1,0 +1,37 @@
+.canvas { position: relative; height: 100%; min-height: 380px; background: #fcfcfd; }
+.canvas :global(.react-flow__node-artifact) { padding: 0; border: 0; background: transparent; }
+.canvas :global(.react-flow__node:focus-visible) { outline: none; }
+.canvas :global(.react-flow__node:focus-visible) .node { box-shadow: 0 0 0 3px rgb(37 99 235 / 0.35); }
+.canvas :global(.react-flow__controls) { box-shadow: none; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.canvas :global(.react-flow__controls-button) { border-bottom-color: var(--border); }
+
+.node { width: 212px; padding: 10px 12px 11px; background: #fff; border: 1px solid #dcdce0; border-radius: 6px; display: grid; gap: 6px; cursor: pointer; transition: opacity 220ms ease-out, border-color 160ms, box-shadow 160ms, transform 160ms; }
+.node:hover { border-color: #b9b9c1; }
+.node[data-state="dim"] { opacity: 0.38; }
+.node[data-state="lineage"] { border-color: #b9c9f5; }
+.node[data-state="selected"] { border-color: var(--primary); box-shadow: 0 0 0 3px rgb(37 99 235 / 0.14), 0 8px 24px -14px rgb(15 23 42 / 0.35); transform: translateY(-1px); }
+.nodeHead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 10.5px; color: var(--muted-foreground); }
+.nodeHead code { font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground); font-weight: 500; }
+.node strong { font-size: 12.5px; font-weight: 500; line-height: 1.35; color: var(--foreground); }
+.nodeTone { justify-self: start; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--muted); color: var(--muted-foreground); }
+.node[data-tone="pass"] .nodeTone { background: #ecfdf3; color: #067647; }
+.node[data-tone="fail"] .nodeTone { background: #fef3f2; color: #b42318; }
+.node[data-tone="warn"] .nodeTone { background: #fffaeb; color: #93370d; }
+.node[data-tone="fail"] .nodeHead code { color: #b42318; }
+/* Kind is carried by small structural marks, not color alone. */
+.node[data-kind="criterion"] { width: 196px; }
+.node[data-kind="decision"] .nodeHead span::before, .node[data-kind="contract"] .nodeHead span::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border: 1px solid currentColor; transform: rotate(45deg) translateY(-1px); }
+.node[data-kind="contract"] .nodeHead span::before { transform: none; }
+.node[data-kind="intent"] { background: var(--foreground); border-color: var(--foreground); }
+.node[data-kind="intent"] .nodeHead, .node[data-kind="intent"] .nodeHead code, .node[data-kind="intent"] strong { color: #fafafa; }
+.node[data-kind="intent"] .nodeHead span { color: #a1a1aa; }
+.node[data-kind="pull"] strong::before { content: ""; }
+.node :global(.react-flow__handle) { width: 5px; height: 5px; min-width: 0; min-height: 0; border: 0; background: #c4c4cc; }
+
+.edge :global(.react-flow__edge-path) { stroke: #d4d4d8; stroke-width: 1.15; transition: stroke 220ms; }
+.edgeOn :global(.react-flow__edge-path) { stroke: var(--primary); stroke-width: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .node, .edge :global(.react-flow__edge-path) { transition: none; }
+  .node[data-state="selected"] { transform: none; }
+}

@@ -4,6 +4,7 @@ import { OverviewWorkspace } from "@/features/overview/overview-workspace";
 import { ArchitectureWorkspace } from "@/features/architecture/architecture-workspace";
 import { PlanningWorkspace } from "@/features/planning/planning-workspace";
 import { DeliveryWorkspace } from "@/features/delivery/delivery-workspace";
+import { RunsWorkspace } from "@/features/runs/runs-workspace";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { workspaces } from "@/lib/workspaces";
@@ -20,6 +21,7 @@ export default async function WorkspacePage({
   if (workspace === "architecture") return <ArchitectureWorkspace key={projectId} projectId={projectId} />;
   if (workspace === "planning") return <PlanningWorkspace key={projectId} projectId={projectId} />;
   if (workspace === "delivery") return <DeliveryWorkspace key={projectId} projectId={projectId} />;
+  if (workspace === "runs") return <RunsWorkspace key={projectId} projectId={projectId} />;
   if (workspace === "overview" && projectId !== "preview")
     return <OverviewWorkspace projectId={projectId} />;
   if (workspace === "overview")
