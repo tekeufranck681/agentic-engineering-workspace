@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { planningService } from "@/services/planningService";
+import { ApiError } from "@/lib/api/client";
 import { runsService } from "@/services/runsService";
 import { AlertCircle, ArrowRight, Columns3, FolderOpen, ListChecks, LoaderCircle, Play, ShieldCheck, Sparkles, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,21 @@ function TaskRef({ id, onSelect, known }: {
     known: boolean;
 }) {
     return known ? <button type="button" className="arch-chip" onClick={() => onSelect(id)}>{id}</button> : <span className="arch-chip" title="Not part of this plan">{id}</span>;
+}
+// Execution order: every task after the tasks it depends on (ties by ID),
+// with tasks that have no acceptance criteria last because they cannot run.
+export function executionOrder(tasks: PlanTask[]): PlanTask[] {
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    const num = (id: string) => Number(id.replace(/\D/g, "")) || 0;
+    const done = new Set<string>();
+    const out: PlanTask[] = [];
+    const pool = [...tasks].sort((a, b) => Number(a.ac_ids.length === 0) - Number(b.ac_ids.length === 0) || num(a.id) - num(b.id));
+    while (out.length < tasks.length) {
+        const next = pool.find(t => !done.has(t.id) && t.depends_on.every(d => done.has(d) || !byId.has(d))) ?? pool.find(t => !done.has(t.id))!;
+        done.add(next.id);
+        out.push(next);
+    }
+    return out;
 }
 export function PlanningWorkspace({ projectId }: {
     projectId: string;
@@ -44,8 +60,13 @@ export function PlanningWorkspace({ projectId }: {
         setStarting(true);
         setStartError(undefined);
         try {
+            // A task already marked ready by an earlier attempt is fine: starting
+            // the run re-validates readiness on the server.
             if (task.status === "pending")
-                await planningService.markReady(projectId, task.id);
+                await planningService.markReady(projectId, task.id).catch((e: unknown) => {
+                    if (!(e instanceof ApiError && e.status === 409))
+                        throw e;
+                });
             const { run_id } = await runsService.start(projectId, task.id);
             await runsService.execute(projectId, run_id);
             router.push(`/projects/${projectId}/runs`);
@@ -71,7 +92,7 @@ export function PlanningWorkspace({ projectId }: {
     const preview = projectId === "preview";
     const architectureId = (arch || archId || "").trim();
     const rset = (rsetInput || (lockedSet?.status === "locked" ? lockedSet.id : "")).trim();
-    const tasks = data?.tasks ?? [];
+    const tasks = useMemo(() => executionOrder(data?.tasks ?? []), [data?.tasks]);
     const ids = new Set(tasks.map(t => t.id));
     const current = tasks.find(t => t.id === selected);
     const readiness = current ? entry?.readiness[current.id] : undefined;
@@ -79,6 +100,7 @@ export function PlanningWorkspace({ projectId }: {
     const blockersOf = (t: PlanTask) => entry?.readiness[t.id]?.blocking_reasons ?? t.blocking_reasons;
     const readinessLabel = (t: PlanTask) => { const r = entry?.readiness[t.id]; return r?.pending ? "checking" : r?.error ? "unknown" : r?.readiness ?? t.readiness ?? "not checked"; };
     const row = (t: PlanTask) => <tr key={t.id} aria-selected={current?.id === t.id} onClick={() => setSelected(t.id)}>
+   <td className="font-mono">{t.ac_ids.length ? tasks.filter(x => x.ac_ids.length).indexOf(t) + 1 : "—"}</td>
    <td><button type="button" className="task-id" onClick={() => setSelected(t.id)}>{t.id}</button></td>
    <td className="task-title-cell"><strong>{t.title}</strong></td>
    <td><StatusBadge>{t.status}</StatusBadge></td>
@@ -109,7 +131,7 @@ export function PlanningWorkspace({ projectId }: {
     <div className="section-heading arch-graph-heading"><h2 id="plan-tasks-title"><ListChecks size={15} aria-hidden="true"/>Tasks <span className="field-hint">{data ? tasks.length : "—"}</span></h2>
      <div className="segmented" role="group" aria-label="Task view"><button type="button" aria-pressed={view === "table"} onClick={() => setView("table")}><Table2 size={14} aria-hidden="true"/>Table</button><button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}><Columns3 size={14} aria-hidden="true"/>Board</button></div></div>
     {!tasks.length ? <div className="workspace-empty arch-empty"><ListChecks size={26} strokeWidth={1.4} aria-hidden="true"/><h3>{data ? "No tasks in this plan" : "Your execution plan starts here"}</h3><p>{data ? "Decompose the architecture to create tasks." : "Decompose an architecture into tasks, or load its saved plan."}</p></div>
-            : view === "table" ? <div className="task-table-wrap"><table className="task-table"><thead><tr><th>ID</th><th>Task</th><th>Status</th><th>Size</th><th>Acceptance criteria</th><th>Deps</th><th>Readiness</th><th>Owner / agent</th></tr></thead><tbody>{tasks.map(row)}</tbody></table></div>
+            : view === "table" ? <div className="task-table-wrap"><table className="task-table"><thead><tr><th>Step</th><th>ID</th><th>Task</th><th>Status</th><th>Size</th><th>Acceptance criteria</th><th>Deps</th><th>Readiness</th><th>Owner / agent</th></tr></thead><tbody>{tasks.map(row)}</tbody></table></div>
                 : <div className="task-board">{boardColumns.filter(c => c !== "cancelled" || tasks.some(t => t.status === c)).map(c => <div key={c} className="task-board-column"><h3>{c} <span className="field-hint">{tasks.filter(t => t.status === c).length}</span></h3>{tasks.filter(t => t.status === c).map(t => <button key={t.id} type="button" className="task-card" aria-pressed={current?.id === t.id} onClick={() => setSelected(t.id)}><code>{t.id}</code><strong>{t.title}</strong><span className="field-hint">{t.depends_on.length} deps · {readinessLabel(t)}</span></button>)}</div>)}</div>}
    </section>
    <aside className="arch-inspector" aria-labelledby="task-inspector-title">
@@ -124,10 +146,11 @@ export function PlanningWorkspace({ projectId }: {
       <h4>Blockers</h4>
       {readiness?.error ? <p className="field-hint" role="alert">{readiness.error}</p> : blockersOf(current).length ? <ul className="task-blockers">{blockersOf(current).map((reason, i) => { const ref = reason.match(/TASK-\d+/)?.[0]; return <li key={i}><AlertCircle size={13} aria-hidden="true"/><span>{reason}</span>{ref && <TaskRef id={ref} known={ids.has(ref)} onSelect={setSelected}/>}</li>; })}</ul> : <p className="field-hint">{readiness && !readiness.pending ? "No blockers reported." : "Readiness has not been checked."}</p>}
       <h4>Validation plan</h4><p className="field-hint">The task contract does not include a validation plan yet. Acceptance criteria above define what must pass.</p>
-      {startError && <p className="field-hint" role="alert">{startError}</p>}
+      {startError && <div className="requirements-error" role="alert"><AlertCircle size={16} aria-hidden="true"/><div><strong>The run did not start</strong><p>{startError}</p></div></div>}
+      {current.ac_ids.length === 0 && <div className="requirements-error" role="note"><AlertCircle size={16} aria-hidden="true"/><div><strong>No acceptance criteria</strong><p>Evaluation has nothing to check this task against. Generate criteria in Requirements, then decompose again; the new tasks will carry them.</p></div></div>}
       <div className="state-actions task-actions">
        <Button variant="outline" disabled={preview || readiness?.pending} onClick={() => void checkReadiness(projectId, current.id)}>{readiness?.pending ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <ShieldCheck size={15} aria-hidden="true"/>}Check readiness</Button>
-       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title="Run is enabled after the backend confirms readiness"><Play size={15} aria-hidden="true"/>Run task</Button>}
+       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error && current.ac_ids.length > 0 ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title={current.ac_ids.length === 0 ? "This task has no acceptance criteria to evaluate" : "Run is enabled after the backend confirms readiness"}><Play size={15} aria-hidden="true"/>Run task</Button>}
       </div>
      </>}
     </div>

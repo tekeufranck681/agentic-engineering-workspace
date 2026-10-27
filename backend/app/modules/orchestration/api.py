@@ -37,6 +37,7 @@ from app.modules.sandbox.config import SandboxSettings
 from app.modules.sandbox.provider import E2BSandboxProvider, WorkspaceSpec
 from app.modules.tools.gateway import ToolGateway
 from app.modules.tools.sandbox_tools import register_sandbox_tools
+from app.modules.validation.plan import ValidationPlanService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -70,7 +71,8 @@ async def _execute(project_id: uuid.UUID, run_id: str) -> None:
             runs=RunsService(repo), planning=PlanningService(llm=None, repo=repo),
             context_builder=ContextBuilder(repo, github=github),
             implementer=ImplementationCapability(runtime, register_sandbox_tools(ToolGateway()), run_store),
-            evaluator=IndependentACEvaluator(runtime, run_store, evidence),
+            # The approved validation plan maps each criterion to its pytest checks.
+            evaluator=IndependentACEvaluator(runtime, run_store, evidence, plans=ValidationPlanService(llm=None, repo=repo)),
             diagnoser=IndependentDiagnoser(runtime, run_store, evidence),
             run_store=run_store, delivery=DeliveryService(github, run_store, evidence),
         )
