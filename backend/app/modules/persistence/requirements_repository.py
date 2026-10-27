@@ -39,9 +39,11 @@ from app.modules.persistence.architecture_models import (
     TaskRow,
 )
 from app.modules.persistence.run_models import RunRow
+from app.modules.persistence.validation_models import VALIDATION_ROW_CLASS_BY_KIND, ValidationPlanRow
 
 ROW_CLASS_BY_KIND["run"] = RunRow
 ROW_CLASS_BY_KIND.update(ARCH_ROW_CLASS_BY_KIND)  # 0005: arch, ADR, contract, task
+ROW_CLASS_BY_KIND.update(VALIDATION_ROW_CLASS_BY_KIND)  # 0006: validation plans (ENG-039)
 
 
 class SqlAlchemyArtifactRepository:
@@ -157,6 +159,7 @@ class SqlAlchemyArtifactRepository:
             "ADR": AdrRow,
             "CON": EngineeringContractRow,
             "TASK": TaskRow,
+            "VP": ValidationPlanRow,
         }
         prefix, _ = parse_id(id)
         try:
@@ -176,6 +179,7 @@ class SqlAlchemyArtifactRepository:
         from app.domain.run import Run
         from app.domain.task import Task
         from app.domain.user_story import UserStory
+        from app.domain.validation_plan import ValidationPlan
 
         domain_class_by_row: dict[type, type[Artifact]] = {
             RequirementRow: Requirement,
@@ -187,6 +191,7 @@ class SqlAlchemyArtifactRepository:
             AdrRow: ArchitectureDecision,
             EngineeringContractRow: EngineeringContract,
             TaskRow: Task,
+            ValidationPlanRow: ValidationPlan,
         }
         domain_class = domain_class_by_row[type(row)]
         payload = {

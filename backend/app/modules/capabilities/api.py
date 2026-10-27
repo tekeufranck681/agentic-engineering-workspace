@@ -22,7 +22,12 @@ from app.modules.capabilities.errors import (
     CapabilityNotFoundError,
     CapabilityTimeoutError,
 )
-from app.modules.capabilities.registry import ARCHITECTURE_DESIGN, REQUIREMENTS_ANALYZE, default_registry
+from app.modules.capabilities.registry import (
+    ARCHITECTURE_DESIGN,
+    PLANNING_VALIDATE,
+    REQUIREMENTS_ANALYZE,
+    default_registry,
+)
 from app.modules.capabilities.runtime import CapabilityPort, CapabilityRuntime
 from app.modules.memory.api import get_memory_provider, get_memory_settings
 from app.modules.model_gateway.api import RETRY_AFTER_SECONDS, get_model_gateway
@@ -64,6 +69,11 @@ async def architecture_capability(request: Request) -> CapabilityPort:
     """
     context = InvocationContext(project_id=await request_project_id(request))
     return get_capability_runtime().port(ARCHITECTURE_DESIGN, context)
+
+
+def validation_capability(project_id: uuid.UUID) -> CapabilityPort:
+    """LLMPort for the validation planning service, bound to the path's project (memory recall)."""
+    return get_capability_runtime().port(PLANNING_VALIDATE, InvocationContext(project_id=str(project_id)))
 
 
 async def request_project_id(request: Request) -> str | None:

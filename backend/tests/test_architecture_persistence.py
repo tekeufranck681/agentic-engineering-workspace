@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.core.db import get_session
 from app.domain.adr import ArchitectureDecision
@@ -160,7 +161,7 @@ def test_alembic_0005_chain_and_tables(tmp_path, monkeypatch):
     head = engine.connect().execute(
         text("SELECT version_num FROM alembic_version")
     ).scalar_one()
-    assert head == "0005"
+    assert head == ScriptDirectory.from_config(config).get_current_head()  # 0005 or any later revision
 
     command.downgrade(config, "base")
     assert not {"architectures", "adrs", "engineering_contracts", "tasks"} & set(

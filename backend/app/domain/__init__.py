@@ -15,6 +15,7 @@ from .enums import (
     Priority,
     VerificationKind,
     TaskSize,
+    ValidationLevel,
     REQUIREMENT_TRANSITIONS,
     TASK_TRANSITIONS,
     RUN_TRANSITIONS,
@@ -41,6 +42,7 @@ from .contract import (
     UmlContractContent,
 )
 from .task import Task, TaskDependency
+from .validation_plan import ExecutableCheck, ValidationCase, ValidationPlan
 from .run import Run, RunStartPayload
 from .ports import LLMPort, RepositoryPort
 from .fakes import InMemoryRepository, FakeLLM
@@ -56,6 +58,10 @@ __all__ = [
     "Priority",
     "VerificationKind",
     "TaskSize",
+    "ValidationLevel",
+    "ExecutableCheck",
+    "ValidationCase",
+    "ValidationPlan",
     "REQUIREMENT_TRANSITIONS",
     "TASK_TRANSITIONS",
     "RUN_TRANSITIONS",

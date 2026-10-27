@@ -30,6 +30,7 @@ def test_enum_members_exist():
         ArtifactKind.contract,
         ArtifactKind.task,
         ArtifactKind.run,
+        ArtifactKind.validation_plan,
     ]
     assert list(RequirementStatus) == [
         RequirementStatus.draft,

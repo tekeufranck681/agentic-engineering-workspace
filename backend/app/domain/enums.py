@@ -16,6 +16,7 @@ class ArtifactKind(StrEnum):
     contract = "contract"
     task = "task"
     run = "run"
+    validation_plan = "validation_plan"
 
     @property
     def id_prefix(self) -> str:
@@ -29,6 +30,7 @@ class ArtifactKind(StrEnum):
             ArtifactKind.contract: "CON",
             ArtifactKind.task: "TASK",
             ArtifactKind.run: "RUN",
+            ArtifactKind.validation_plan: "VP",
         }[self]
 
 
@@ -81,6 +83,16 @@ class VerificationKind(StrEnum):
     e2e = "e2e"
     manual = "manual"
     static = "static"
+
+
+class ValidationLevel(StrEnum):
+    """Validation levels of HG/v1.0/07 §21: which engineering question a test answers."""
+
+    atomic = "L0"
+    integration = "L1"
+    feature = "L2"
+    e2e = "L3"
+    system = "L4"
 
 
 class TaskSize(StrEnum):

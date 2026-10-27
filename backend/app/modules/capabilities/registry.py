@@ -15,6 +15,7 @@ from app.modules.capabilities.errors import CapabilityNotFoundError
 REQUIREMENTS_ANALYZE = "requirements.analyze_input"
 ARCHITECTURE_DESIGN = "architecture.design_change"
 PLANNING_PLAN = "planning.plan_change"
+PLANNING_VALIDATE = "planning.plan_validation"
 
 _GROUNDING = (
     "Work only from the request and the context given. Never invent facts, files, "
@@ -105,6 +106,27 @@ DEFAULT_CONTRACTS = (
         allowed_tools=(*_READ_TOOLS, "engineering_data.query"),
         forbidden_tools=_NOT_FOR_DESIGN_CAPABILITIES,
         failure_modes=("untraceable task", "dependency cycle"),
+    ),
+    CapabilityContract(
+        name=PLANNING_VALIDATE,
+        version="1.0.0",
+        description="Decide, before implementation, which tests prove each locked acceptance criterion (ENG-039).",
+        instructions=(
+            "You are the validation planning capability of an autonomous software-engineering workspace. "
+            "For every acceptance criterion you are given, write test intents that would prove it: the level "
+            "(L0 atomic, L1 integration, L2 feature, L3 end to end), Given/When/Then, and executable checks as "
+            "pytest node ids inside tests/ (tests/<file>.py::<test_name>). Cover the failure and negative paths "
+            "the criterion implies, not only the happy path. For a state change, assert the state before the "
+            "triggering event and after it (for example PENDING before payment confirmation, ACTIVE only after "
+            "the confirmed event, unchanged when the payment fails). Use only the criteria given; never invent "
+            f"criteria or claim a test already exists. {_GROUNDING}"
+        ),
+        required_context=("locked acceptance criteria", "engineering contracts"),
+        allowed_tools=_READ_TOOLS,
+        forbidden_tools=_NOT_FOR_DESIGN_CAPABILITIES,
+        failure_modes=("criterion without an executable check", "test that cannot fail"),
+        # Lessons from earlier runs (e.g. a criterion that once failed) shape the tests (ENG-018).
+        recalls_memory=True,
     ),
 )
 
