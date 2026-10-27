@@ -968,3 +968,5 @@ a.arch-chip:hover, button.arch-chip:hover { border-color: var(--primary); color:
   [data-slot="button"], [data-slot="button"] svg { transition: none; }
   [data-slot="button"]:active { transform: none; }
 }
+.arch-accept { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+.arch-accept .arch-generate-row { margin-bottom: 0; }
