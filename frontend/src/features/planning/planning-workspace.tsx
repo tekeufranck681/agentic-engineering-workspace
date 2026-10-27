@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, Columns3, FolderOpen, ListChecks, LoaderCircle, Play, ShieldCheck, Sparkles, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,18 @@ export function PlanningWorkspace({ projectId }: {
     const [view, setView] = useState<"table" | "board">("table");
     const [selected, setSelected] = useState<string>();
     const data = entry?.data;
+    const reopened = useRef(false);
+    useEffect(() => {
+        if (reopened.current || projectId === "preview" || data)
+            return;
+        reopened.current = true;
+        const id = recallArtifact(projectId, "arch");
+        if (!id)
+            return;
+        if (!archId)
+            void useArchitectureStore.getState().read(projectId, id);
+        void read(projectId, id);
+    }, [archId, data, projectId, read]);
     const pending = Boolean(entry?.pending);
     const preview = projectId === "preview";
     const architectureId = (arch || archId || "").trim();

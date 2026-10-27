@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { recallArtifact } from "@/lib/recent-artifacts";
 import { AlertCircle, ArrowRight, Check, FolderOpen, LoaderCircle, LockKeyhole, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,16 @@ export function RequirementsWorkspace({ projectId }: {
     const locked = data?.set.status === "locked";
     const filtered = data?.requirements.filter(r => `${r.id} ${r.title} ${r.description}`.toLowerCase().includes(search.toLowerCase())) ?? [];
     const showComposer = !data || composing;
+    // Reopen the last saved set from the backend after a reload.
+    const reopened = useRef(false);
+    useEffect(() => {
+        if (reopened.current || preview || data)
+            return;
+        reopened.current = true;
+        const id = recallArtifact(projectId, "rset");
+        if (id)
+            void execute(projectId, "read", id);
+    }, [data, execute, preview, projectId]);
     useEffect(() => {
         if (!brief.trim())
             return;
