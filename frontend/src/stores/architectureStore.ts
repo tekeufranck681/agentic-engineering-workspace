@@ -5,7 +5,7 @@ import type { ArchitectureResult } from "@/lib/api/architecture-contract";
 import { architectureService } from "@/services/architectureService";
 type Entry = {
     data?: ArchitectureResult;
-    pending?: "generate" | "read";
+    pending?: "generate" | "read" | "accept";
     error?: string;
     uncertain?: boolean;
 };
@@ -13,9 +13,10 @@ type Store = {
     entries: Record<string, Entry>;
     generate: (projectId: string, requirementsSetId: string, context: string) => Promise<void>;
     read: (projectId: string, architectureId: string) => Promise<void>;
+    accept: (projectId: string, architectureId: string, reviewer: string) => Promise<void>;
 };
 export const useArchitectureStore = create<Store>((set, get) => {
-    async function run(projectId: string, command: "generate" | "read", request: () => Promise<ArchitectureResult>) {
+    async function run(projectId: string, command: "generate" | "read" | "accept", request: () => Promise<ArchitectureResult>) {
         const old = get().entries[projectId] ?? {};
         if (old.pending || (old.uncertain && command !== "read"))
             return;
@@ -36,5 +37,6 @@ export const useArchitectureStore = create<Store>((set, get) => {
         entries: {},
         generate: (projectId, requirementsSetId, context) => run(projectId, "generate", () => architectureService.generate(projectId, requirementsSetId, context)),
         read: (projectId, architectureId) => run(projectId, "read", () => architectureService.read(projectId, architectureId)),
+        accept: (projectId, architectureId, reviewer) => run(projectId, "accept", () => architectureService.accept(projectId, architectureId, reviewer)),
     };
 });

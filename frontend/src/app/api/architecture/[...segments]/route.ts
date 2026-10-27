@@ -9,9 +9,10 @@ async function proxy(request: Request, context: {
     const path = segments.join("/");
     const read = request.method === "GET" && /^ARCH-\d+$/.test(path);
     const generate = request.method === "POST" && path === "generate";
+    const accept = request.method === "POST" && /^ARCH-\d+\/accept$/.test(path);
     const headers = { "Cache-Control": "no-store" };
     const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
-    if (!read && !generate)
+    if (!read && !generate && !accept)
         return fail("Unsupported architecture action.", 400);
     const projectId = new URL(request.url).searchParams.get("project_id") ?? "";
     if (read && !/^[0-9a-f-]{36}$/i.test(projectId))
@@ -28,6 +29,17 @@ async function proxy(request: Request, context: {
             if (input.context !== undefined && (typeof input.context !== "string" || input.context.length > 20000))
                 return fail("Design context must be at most 20,000 characters.", 422);
             body = { project_id: input.project_id, requirements_set_id: input.requirements_set_id, context: input.context ?? "" };
+        }
+        catch {
+            return fail("Invalid request body.", 400);
+        }
+    }
+    else if (accept) {
+        try {
+            const input = await request.json();
+            if (typeof input.project_id !== "string" || !/^[0-9a-f-]{36}$/i.test(input.project_id) || typeof input.accepted_by !== "string" || !input.accepted_by.trim() || input.accepted_by.length > 200)
+                return fail("Enter a reviewer name of 1–200 characters.", 422);
+            body = { project_id: input.project_id, accepted_by: input.accepted_by.trim() };
         }
         catch {
             return fail("Invalid request body.", 400);

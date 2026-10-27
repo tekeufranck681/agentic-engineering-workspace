@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Boxes, FileCode2, FolderOpen, LayoutList, ListChecks, LoaderCircle, Network, ScrollText, Sparkles, Workflow } from "lucide-react";
+import { AlertCircle, ArrowRight, Boxes, Check, FileCode2, FolderOpen, LayoutList, ListChecks, LoaderCircle, Network, ScrollText, Sparkles, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -22,6 +22,8 @@ export function ArchitectureWorkspace({ projectId }: {
     const entry = useArchitectureStore(s => s.entries[projectId]);
     const generate = useArchitectureStore(s => s.generate);
     const read = useArchitectureStore(s => s.read);
+    const accept = useArchitectureStore(s => s.accept);
+    const [reviewer, setReviewer] = useState("");
     const lockedSet = useRequirementsStore(s => s.entries[projectId]?.data?.set);
     const [setId, setSetId] = useState("");
     const [context, setContext] = useState("");
@@ -62,7 +64,12 @@ export function ArchitectureWorkspace({ projectId }: {
    <FolderOpen size={16} aria-hidden="true"/><label htmlFor="arch-id">Open a saved architecture</label><Input id="arch-id" value={openId} onChange={e => setArchId(e.target.value)} placeholder="ARCH-001" pattern="ARCH-[0-9]+" required disabled={pending || preview}/><Button variant="outline" disabled={pending || preview || !/^ARCH-\d+$/.test(openId.trim())}>{entry?.pending === "read" ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true"/> : null}Open architecture <ArrowRight size={14} aria-hidden="true"/></Button>
   </form>
   {entry?.error && <div className="requirements-error" role="alert"><AlertCircle size={16} aria-hidden="true"/><div><strong>{entry.uncertain ? "Result needs confirmation" : "Action could not be completed"}</strong><p>{entry.error}</p>{entry.uncertain && <p>Generation is paused. Open the saved architecture above to confirm whether a draft was created.</p>}</div></div>}
-  {data && <div className="arch-summary"><div className="requirement-detail-meta"><code>{data.architecture.id}</code><span>Version {data.architecture.version}</span>{data.architecture.derived_from.map(id => <Link key={id} href={requirementsHref} className="arch-link">from {id}</Link>)}</div><p>{data.architecture.summary}</p></div>}
+  {data && <div className="arch-summary"><div className="requirement-detail-meta"><code>{data.architecture.id}</code><span>Version {data.architecture.version}</span>{data.architecture.derived_from.map(id => <Link key={id} href={requirementsHref} className="arch-link">from {id}</Link>)}</div><p>{data.architecture.summary}</p>
+   {data.architecture.status === "draft" ? <form className="arch-accept" onSubmit={e => { e.preventDefault(); void accept(projectId, data.architecture.id, reviewer.trim()); }}>
+     <label htmlFor="arch-reviewer" className="field-hint">Reviewed the components and decisions? Accepting makes this the design that tasks and runs build on.</label>
+     <div className="arch-generate-row"><Input id="arch-reviewer" value={reviewer} onChange={e => setReviewer(e.target.value)} placeholder="Reviewer name" maxLength={200} disabled={pending || preview}/><Button disabled={pending || preview || entry?.uncertain || !reviewer.trim()}>{entry?.pending === "accept" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Check size={15} aria-hidden="true"/>}Accept architecture</Button></div>
+    </form> : <p className="field-hint">Accepted. Planning and runs use this version.</p>}
+  </div>}
   <div className="arch-grid">
    <section className="arch-graph-panel" aria-labelledby="arch-graph-title">
     <div className="section-heading arch-graph-heading"><h2 id="arch-graph-title"><Network size={15} aria-hidden="true"/>Components <span className="field-hint">{data ? components.length : "—"}</span></h2>
