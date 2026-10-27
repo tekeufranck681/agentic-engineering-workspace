@@ -37,6 +37,7 @@ class ModelCallReceipt(BaseModel):
     response_chars: int | None = Field(default=None, ge=0)
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    cost_usd: float | None = Field(default=None, description="The runtime's reported cost, when its receipt has one")
     finish_reason: str | None = None
     latency_ms: int = Field(ge=0)
     structured_schema: str | None = None

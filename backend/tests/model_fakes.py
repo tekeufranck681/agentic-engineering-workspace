@@ -13,11 +13,23 @@ class ScriptedProvider:
 
     name = "scripted"
 
-    def __init__(self, *replies: str | Exception, delay: float = 0.0) -> None:
+    def __init__(
+        self,
+        *replies: str | Exception,
+        delay: float = 0.0,
+        answered_by: str | None = PINNED,
+        routed_provider: str | None = "nvidia",
+        tokens: tuple[int | None, int | None] = (10, 5),
+        cost_usd: float | None = None,
+    ) -> None:
         self._replies = list(replies)
         self.calls: list[dict] = []
         self.delay = delay
         self.on_call: Callable[[], None] | None = None
+        self.answered_by = answered_by
+        self.routed_provider = routed_provider
+        self.tokens = tokens
+        self.cost_usd = cost_usd
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(provider=self.name, state="online", endpoint="scripted://")
@@ -35,14 +47,15 @@ class ScriptedProvider:
             raise reply
         return ProviderReply(
             content=reply,
-            answered_by=PINNED,
-            attribution_source="runtime receipt",
+            answered_by=self.answered_by,
+            attribution_source="runtime receipt" if self.answered_by else "not reported by the runtime",
             runtime_receipt_id="rcpt-1",
-            routed_provider="nvidia",
-            prompt_tokens=10,
-            completion_tokens=5,
+            routed_provider=self.routed_provider,
+            prompt_tokens=self.tokens[0],
+            completion_tokens=self.tokens[1],
             finish_reason="stop",
             latency_ms=7,
+            cost_usd=self.cost_usd,
         )
 
     def close(self) -> None:

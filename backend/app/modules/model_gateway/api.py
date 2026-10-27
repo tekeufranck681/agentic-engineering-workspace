@@ -17,6 +17,7 @@ from app.modules.model_gateway.errors import (
     ModelAuthError,
     ModelConfigError,
     ModelGatewayError,
+    ModelLaneUnavailableError,
     ModelRateLimitedError,
     ModelUnavailableError,
 )
@@ -28,7 +29,13 @@ from app.modules.nightshift.errors import NightshiftConfigError
 
 # The model dependency is down or misconfigured: 503. The model or provider
 # produced something unusable: 502.
-_UNAVAILABLE = (ModelConfigError, ModelAuthError, ModelUnavailableError, ModelRateLimitedError)
+_UNAVAILABLE = (
+    ModelConfigError,
+    ModelAuthError,
+    ModelUnavailableError,
+    ModelRateLimitedError,
+    ModelLaneUnavailableError,
+)
 RETRY_AFTER_SECONDS = 30
 
 

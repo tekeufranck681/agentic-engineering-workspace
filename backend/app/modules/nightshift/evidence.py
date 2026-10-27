@@ -56,6 +56,8 @@ class RuntimeReceipt(BaseModel):
     decision_id: str | None = None
     from_cache: bool | None = None
     """True when the runtime answered from its cache instead of running a model."""
+    cost_usd: float | None = None
+    """``cost.actual_usd`` (0 on NVIDIA's free trial allowance); None when absent."""
     keys: list[str] = Field(default_factory=list)
     sha256: str = Field(description="SHA-256 of the canonical JSON of the meterless object")
 
@@ -70,6 +72,11 @@ class RuntimeReceipt(BaseModel):
 
         route = payload.get("winning_route")
         route = route if isinstance(route, dict) else {}
+        nested = payload.get("receipt")
+        cost = payload.get("cost") or (nested.get("cost") if isinstance(nested, dict) else None)
+        actual_usd = cost.get("actual_usd") if isinstance(cost, dict) else None
+        if isinstance(actual_usd, bool) or not isinstance(actual_usd, (int, float)):
+            actual_usd = None
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return cls(
             requested_model=text(payload, "requested_model"),
@@ -80,6 +87,7 @@ class RuntimeReceipt(BaseModel):
             receipt_id=text(payload, "receipt_id"),
             decision_id=text(payload, "decision_id"),
             from_cache=payload["from_cache"] if isinstance(payload.get("from_cache"), bool) else None,
+            cost_usd=None if actual_usd is None else float(actual_usd),
             keys=sorted(str(key) for key in payload),
             sha256=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         )

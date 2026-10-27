@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.modules.capabilities.contract import InvocationContext
 from app.modules.capabilities.errors import (
+    CapabilityBudgetError,
     CapabilityCancelledError,
     CapabilityError,
     CapabilityInputError,
@@ -30,6 +31,7 @@ from app.modules.model_gateway.api import RETRY_AFTER_SECONDS, get_model_gateway
 _STATUS: tuple[tuple[type[CapabilityError], int], ...] = (
     (CapabilityTimeoutError, 504),
     (CapabilityMemoryError, 503),
+    (CapabilityBudgetError, 429),
     (CapabilityCancelledError, 409),
     (CapabilityInputError, 422),
     (CapabilityNotFoundError, 500),
