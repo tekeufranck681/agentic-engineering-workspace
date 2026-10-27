@@ -1,11 +1,10 @@
-"""Which executable check proves each acceptance criterion (ENG-033 fallback).
+"""Which executable check proves each acceptance criterion.
 
-M4's ENG-039 validation plan (per AC the test intents, level and executable
-checks) is not on main yet. Until it lands an AC is bound to a pytest check
-only on explicit evidence, in this order:
+In this order, and only on explicit evidence:
 
-1. the rows of a validation plan, when one is given (``ValidationPlan`` is the
-   seam ENG-039 plugs into);
+1. the approved ENG-039 validation plan: the checks of its test intents for
+   the AC, planned against the AC's current version (a plan made for an older
+   version of the AC says nothing about this one);
 2. the AC's own ``verification.hint`` when it is a pytest selector such as
    ``tests/test_service.py::test_ac_001_unconfirmed_payment_does_not_activate``,
    as the ENG-050 demo seed writes them.
@@ -15,40 +14,29 @@ green suite is not spread over criteria it may not test.
 """
 
 import re
+import uuid
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field
 
 from app.domain.acceptance_criterion import AcceptanceCriterion
+from app.domain.validation_plan import ValidationPlan
 
 # What the sandbox accepts for ``run_tests(selector)``, limited to a pytest file.
 _PYTEST_SELECTOR = re.compile(r"^[A-Za-z0-9_./-]{1,300}\.py(::[A-Za-z0-9_\[\]./-]{1,200})*$")
 
 
-class PlannedCheck(BaseModel):
-    """One validation-plan row: an AC and the pytest selector that checks it."""
+class ApprovedPlans(Protocol):
+    """Where the evaluator finds the approved plan (ENG-039's ``ValidationPlanService``)."""
 
-    acceptance_criterion_id: str
-    selector: str
-
-
-class ValidationPlan(Protocol):
-    def checks_for(self, acceptance_criterion_id: str) -> list[PlannedCheck]: ...
-
-
-class StaticValidationPlan(BaseModel):
-    """An in-memory plan. M4's persisted ENG-039 plan replaces it."""
-
-    checks: list[PlannedCheck] = Field(default_factory=list)
-
-    def checks_for(self, acceptance_criterion_id: str) -> list[PlannedCheck]:
-        return [c for c in self.checks if c.acceptance_criterion_id == acceptance_criterion_id]
+    async def approved_plan(self, project_id: uuid.UUID, ac_ids: list[str]) -> ValidationPlan | None: ...
 
 
 class CheckBinding(BaseModel):
     acceptance_criterion_id: str
     selectors: list[str] = Field(default_factory=list)
     source: Literal["validation_plan", "verification_hint", "unmapped"]
+    plan: str | None = Field(default=None, description="The plan the checks come from, e.g. VP-001@v2")
 
 
 def is_pytest_selector(value: str | None) -> bool:
@@ -58,9 +46,10 @@ def is_pytest_selector(value: str | None) -> bool:
 def bind_check(ac: AcceptanceCriterion, plan: ValidationPlan | None = None) -> CheckBinding:
     """The selectors that check ``ac``; none when the evidence is not explicit."""
     if plan is not None:
-        selectors = [row.selector for row in plan.checks_for(ac.id) if is_pytest_selector(row.selector)]
+        selectors = [target for target in plan.checks_for(ac.id, ac.version) if is_pytest_selector(target)]
         if selectors:
-            return CheckBinding(acceptance_criterion_id=ac.id, selectors=selectors, source="validation_plan")
+            return CheckBinding(acceptance_criterion_id=ac.id, selectors=selectors, source="validation_plan",
+                                plan=f"{plan.id}@v{plan.version}")
     hint = (ac.verification.hint or "").strip() if ac.verification else ""
     if is_pytest_selector(hint):
         return CheckBinding(acceptance_criterion_id=ac.id, selectors=[hint], source="verification_hint")

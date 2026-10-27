@@ -17,12 +17,13 @@ import pytest
 
 from app.domain.acceptance_criterion import AcceptanceCriterion, Verification
 from app.domain.enums import RunStatus
+from app.domain.fakes import FakeLLM
 from app.modules.capabilities.errors import CapabilityNotFoundError
 from app.modules.capabilities.registry import EVALUATION_EVALUATE, CapabilityRegistry, default_registry
 from app.modules.capabilities.runtime import CapabilityRuntime
 from app.modules.demo.scenario import AC_001_TEST, EXPECTED_FAILURE, REFERENCE_FIX, TARGET_FILE, seed
 from app.modules.evaluation.evaluator import READ_ONLY_TOOLS, IndependentACEvaluator
-from app.modules.evaluation.mapping import PlannedCheck, StaticValidationPlan, bind_check
+from app.modules.evaluation.mapping import bind_check
 from app.modules.implementation.capability import IMPLEMENTATION_CONTRACT
 from app.modules.model_gateway.config import ModelGatewaySettings
 from app.modules.model_gateway.gateway import ModelGateway
@@ -32,6 +33,7 @@ from app.modules.persistence.run_models import CapabilityInvocationRow, RunEvent
 from app.modules.persistence.run_store import RunStore
 from app.modules.sandbox.config import SandboxSettings
 from app.modules.sandbox.provider import Workspace, WorkspaceState
+from app.modules.validation.plan import LLMValidationPlan, ValidationPlanService
 from tests.model_fakes import PINNED, ScriptedProvider
 from tests.test_implementation_capability import workspace  # noqa: F401  (fixture: M5's billing workspace)
 from tests.test_run_graph import RIGHT, WRONG, agent, make_delivery, prepare
@@ -77,11 +79,22 @@ def review(*findings: tuple[str, str] | tuple[str, str, str]) -> str:
         for f in findings]})
 
 
-def evaluator(session, tmp_path, *replies, plan=None):
+def evaluator(session, tmp_path, *replies, plans=None):
     provider = ScriptedProvider(*replies)
     runtime = CapabilityRuntime(ModelGateway(provider, ModelGatewaySettings(_env_file=None)), default_registry())
     evidence = EvidenceStore(session, tmp_path / "evidence")
-    return IndependentACEvaluator(runtime, RunStore(session), evidence, validation_plan=plan), provider, evidence
+    return IndependentACEvaluator(runtime, RunStore(session), evidence, plans=plans), provider, evidence
+
+
+async def approved_plan(repo, project_id, *checks: tuple[str, str]) -> ValidationPlanService:
+    """ENG-039: a plan for RSET-001 whose test intents name these (ac_id, pytest target) checks, approved."""
+    answer = LLMValidationPlan.model_validate({"cases": [
+        {"ac_id": ac_id, "level": "L0", "title": f"{ac_id} check", "checks": [{"target": target}]}
+        for ac_id, target in checks]})
+    plans = ValidationPlanService(llm=FakeLLM({"LLMValidationPlan": answer}), repo=repo)
+    draft = await plans.generate(project_id, "RSET-001")
+    await plans.approve(project_id, draft.id)
+    return plans
 
 
 def evidence_of(verdict, kind: str) -> list[str]:
@@ -214,16 +227,35 @@ async def test_a_regression_outside_the_checks_blocks_pass(session, tmp_path, de
     assert provider.calls == []
 
 
-async def test_a_validation_plan_row_comes_before_the_hint(session, tmp_path, demo_workspace):
+async def test_the_approved_validation_plan_comes_before_the_hint(session, tmp_path, demo_workspace):
     task, criteria = await demo_state(session)
-    plan = StaticValidationPlan(checks=[PlannedCheck(acceptance_criterion_id="AC-002", selector=AC_001_TEST)])
-    ev, _, _ = evaluator(session, tmp_path, plan=plan)
+    # deliberately a different test than AC-002's hint, to show which source wins
+    plans = await approved_plan(SqlAlchemyArtifactRepository(session), task.project_id, ("AC-002", AC_001_TEST))
+    ev, _, _ = evaluator(session, tmp_path, plans=plans)
 
     verdict = (await ev.evaluate(RUN, task, [criteria[1]], demo_workspace)).verdicts[0]
 
     assert verdict.verdict == "FAIL" and EXPECTED_FAILURE in verdict.reason
+    assert verdict.evidence_ids[0] == "validation_plan:VP-001@v2"
     step = session.query(RunStepRow).one()
-    assert step.result["checks"]["AC-002"] == {"source": "validation_plan", "selectors": [AC_001_TEST]}
+    assert step.result["checks"]["AC-002"] == {"source": "validation_plan", "selectors": [AC_001_TEST],
+                                               "plan": "VP-001@v2"}
+
+
+async def test_a_plan_made_for_an_older_version_of_the_ac_is_not_used(session, tmp_path, demo_workspace):
+    task, criteria = await demo_state(session)
+    repo = SqlAlchemyArtifactRepository(session)
+    plans = await approved_plan(repo, task.project_id, ("AC-002", AC_001_TEST))
+    changed = criteria[1].model_copy(update={"version": 2, "then": ["the subscription is ACTIVE at once"]})
+    changed.seal()
+    await repo.save_artifact(changed)
+    ev, _, _ = evaluator(session, tmp_path, review(("AC-002", "keep")), plans=plans)
+    apply_reference_fix(demo_workspace)
+
+    verdict = (await ev.evaluate(RUN, task, [changed], demo_workspace)).verdicts[0]
+
+    assert verdict.verdict == "PASS" and "validation_plan:VP-001@v2" not in verdict.evidence_ids
+    assert session.query(RunStepRow).one().result["checks"]["AC-002"]["source"] == "verification_hint"
 
 
 @pytest.mark.parametrize(("hint", "selectors"), [
@@ -242,13 +274,12 @@ def test_only_an_explicit_pytest_selector_binds_a_check(hint, selectors):
 
 
 async def test_in_the_run_graph_a_fail_drives_a_correction_to_a_delivered_pass(session, workspace, tmp_path):
-    # M5's scenario: AC-001 has no pytest hint, so a validation-plan row names its check (the ENG-039 seam)
+    # M5's scenario: AC-001 has no pytest hint; the approved ENG-039 plan names its check
     repo, runs, run, cb, impl, store, provider = await prepare(session, workspace, WRONG, RIGHT,
                                                                review(("AC-001", "keep")))
-    check = "tests/test_service.py::test_unconfirmed_payment_does_not_activate"
-    plan = StaticValidationPlan(checks=[PlannedCheck(acceptance_criterion_id="AC-001", selector=check)])
-    ev = IndependentACEvaluator(impl.runtime, store, EvidenceStore(session, tmp_path / "evidence"),
-                                validation_plan=plan)
+    plans = await approved_plan(repo, run.project_id,
+                                ("AC-001", "tests/test_service.py::test_unconfirmed_payment_does_not_activate"))
+    ev = IndependentACEvaluator(impl.runtime, store, EvidenceStore(session, tmp_path / "evidence"), plans=plans)
     delivery, _ = make_delivery(session, tmp_path)
 
     outcome = await agent(repo, runs, run, cb, impl, store, workspace, evaluator=ev, delivery=delivery).execute()

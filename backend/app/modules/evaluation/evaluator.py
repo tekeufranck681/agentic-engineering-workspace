@@ -7,8 +7,9 @@ independent review on its own contract (``evaluation.evaluate``).
 
 Per acceptance criterion:
 
-* its check (``mapping.bind_check``: a validation-plan row, else the AC's
-  pytest ``verification.hint``) runs in the sandbox. A failed check is FAIL.
+* its check (``mapping.bind_check``: the approved ENG-039 validation plan,
+  else the AC's pytest ``verification.hint``) runs in the sandbox. A failed
+  check is FAIL.
   A check that is missing, skipped or cannot run, or no check at all, is
   UNVERIFIED, never PASS;
 * a passed check is only a candidate. It needs the full suite to fail on
@@ -21,8 +22,9 @@ Per acceptance criterion:
 The evaluator is read-only: its ToolGateway scope has no write tool. Each
 sandbox call is a tool execution in M2's run store (ENG-027), each test result
 and the diff are write-once evidence (ENG-037), and every verdict's
-``evidence_ids`` name them (``test_output:<sha256>``, ``diff:<sha256>``) and
-the review's receipt (``capability_invocation:<id>``). The sandbox never
+``evidence_ids`` name them (``test_output:<sha256>``, ``diff:<sha256>``), the
+plan that chose the check (``validation_plan:VP-001@v2``) and the review's
+receipt (``capability_invocation:<id>``). The sandbox never
 commits, so ``evaluated_commit`` is the workspace's base commit and the
 evaluated change is the diff evidence on top of it.
 """
@@ -38,7 +40,7 @@ from app.modules.capabilities.receipts import CapabilityInvocationReceipt
 from app.modules.capabilities.registry import EVALUATION_EVALUATE
 from app.modules.capabilities.runtime import CapabilityRuntime
 from app.modules.evaluation.capability import MAX_TEST_CODE_CHARS, EvaluationReview, ReviewFinding, build_review_prompt
-from app.modules.evaluation.mapping import CheckBinding, ValidationPlan, bind_check, covers
+from app.modules.evaluation.mapping import ApprovedPlans, CheckBinding, bind_check, covers
 from app.modules.model_gateway.errors import ModelGatewayError
 from app.modules.orchestration.ports import ACVerdict, Evaluation
 from app.modules.persistence.evidence_store import EvidenceStore
@@ -127,13 +129,13 @@ class IndependentACEvaluator:
     """``ACEvaluator`` for the run graph. Holds no per-run state; one instance can serve many runs."""
 
     def __init__(self, runtime: CapabilityRuntime, run_store: RunStore, evidence: EvidenceStore, *,
-                 gateway: ToolGateway | None = None, validation_plan: ValidationPlan | None = None):
+                 gateway: ToolGateway | None = None, plans: ApprovedPlans | None = None):
         self.contract = runtime.registry.get(EVALUATION_EVALUATE)  # a runtime without it fails here, not mid-run
         self.runtime = runtime
         self.run_store = run_store
         self.evidence = evidence
         self.gateway = gateway or register_sandbox_tools(ToolGateway())
-        self.validation_plan = validation_plan
+        self.plans = plans
 
     async def evaluate(self, run_id: str, task: Task, criteria: list[AcceptanceCriterion],
                        workspace) -> Evaluation:
@@ -153,7 +155,8 @@ class IndependentACEvaluator:
                         criteria: list[AcceptanceCriterion], base_sha: str | None) -> tuple[Evaluation, dict]:
         diff, diff_ref = self._diff(ctx)
         suite, suite_ref, suite_error = self._run_tests(ctx, None)
-        bindings = [bind_check(ac, self.validation_plan) for ac in criteria]
+        plan = await self.plans.approved_plan(task.project_id, [ac.id for ac in criteria]) if self.plans else None
+        bindings = [bind_check(ac, plan) for ac in criteria]
         checks = [self._check(ctx, ac, binding) for ac, binding in zip(criteria, bindings)]
 
         passed = [(ac, b.selectors) for ac, b, c in zip(criteria, bindings, checks) if c.verdict == "PASS"]
@@ -167,8 +170,9 @@ class IndependentACEvaluator:
             findings, review_ref, review_error = await self._review(ctx, step, task, passed, diff)
 
         verdicts = []
-        for ac, check in zip(criteria, checks):
-            evidence = [*check.evidence_ids, *([f"diff:{diff_ref}"] if diff_ref else [])]
+        for ac, binding, check in zip(criteria, bindings, checks):
+            evidence = [*([f"validation_plan:{binding.plan}"] if binding.plan else []), *check.evidence_ids,
+                        *([f"diff:{diff_ref}"] if diff_ref else [])]
             if check.verdict != "PASS":
                 verdicts.append(check.model_copy(update={"evidence_ids": evidence}))
             elif blocker:
@@ -185,7 +189,7 @@ class IndependentACEvaluator:
             "evaluated_commit": base_sha,
             "passed": evaluation.passed,
             "verdicts": {v.acceptance_criterion_id: v.verdict for v in verdicts},
-            "checks": {b.acceptance_criterion_id: {"source": b.source, "selectors": b.selectors} for b in bindings},
+            "checks": {b.acceptance_criterion_id: b.model_dump(exclude={"acceptance_criterion_id"}) for b in bindings},
             "suite": suite.outcome if suite else None,
             "diff": diff_ref,
             "review": review_ref or review_error,
