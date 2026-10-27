@@ -62,7 +62,8 @@ export function PlanningWorkspace({ projectId }: {
         try {
             // A task already marked ready by an earlier attempt is fine: starting
             // the run re-validates readiness on the server.
-            if (task.status === "pending")
+            // A failed task may be retried: the task state machine allows failed -> ready.
+            if (task.status === "pending" || task.status === "failed")
                 await planningService.markReady(projectId, task.id).catch((e: unknown) => {
                     if (!(e instanceof ApiError && e.status === 409))
                         throw e;
@@ -150,7 +151,7 @@ export function PlanningWorkspace({ projectId }: {
       {current.ac_ids.length === 0 && <div className="requirements-error" role="note"><AlertCircle size={16} aria-hidden="true"/><div><strong>No acceptance criteria</strong><p>Evaluation has nothing to check this task against. Generate criteria in Requirements, then decompose again; the new tasks will carry them.</p></div></div>}
       <div className="state-actions task-actions">
        <Button variant="outline" disabled={preview || readiness?.pending} onClick={() => void checkReadiness(projectId, current.id)}>{readiness?.pending ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <ShieldCheck size={15} aria-hidden="true"/>}Check readiness</Button>
-       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error && current.ac_ids.length > 0 ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title={current.ac_ids.length === 0 ? "This task has no acceptance criteria to evaluate" : "Run is enabled after the backend confirms readiness"}><Play size={15} aria-hidden="true"/>Run task</Button>}
+       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error && current.ac_ids.length > 0 ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : current.status === "failed" ? "Retry task" : "Run task"}</Button> : <Button disabled title={current.ac_ids.length === 0 ? "This task has no acceptance criteria to evaluate" : "Run is enabled after the backend confirms readiness"}><Play size={15} aria-hidden="true"/>Run task</Button>}
       </div>
      </>}
     </div>
