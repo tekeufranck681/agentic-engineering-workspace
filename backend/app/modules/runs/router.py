@@ -5,9 +5,11 @@ and drives POST /runs/{id}/transition. SSE streaming lives in runs/sse.py (ENG-0
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from app.core.db import get_session
 from app.domain.errors import TransitionError
-from app.domain.fakes import InMemoryRepository
+from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
 from app.modules.runs.service import RunsService
 from app.modules.runs.schemas import (
     RunStartRequest,
@@ -20,12 +22,9 @@ from app.modules.runs.schemas import (
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def get_service() -> RunsService:
-    """Dependency that builds a service with in-memory repo.
-
-    M2 replaces InMemoryRepository with a real RepositoryPort.
-    """
-    return RunsService(repo=InMemoryRepository())
+def get_service(session: Session = Depends(get_session)) -> RunsService:
+    """Dependency: runs persist through M2's SqlAlchemyArtifactRepository."""
+    return RunsService(repo=SqlAlchemyArtifactRepository(session))
 
 
 @router.post("/start", response_model=RunResponse)

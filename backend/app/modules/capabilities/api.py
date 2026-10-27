@@ -22,7 +22,12 @@ from app.modules.capabilities.errors import (
     CapabilityNotFoundError,
     CapabilityTimeoutError,
 )
-from app.modules.capabilities.registry import ARCHITECTURE_DESIGN, REQUIREMENTS_ANALYZE, default_registry
+from app.modules.capabilities.registry import (
+    ARCHITECTURE_DESIGN,
+    PLANNING_PLAN,
+    REQUIREMENTS_ANALYZE,
+    default_registry,
+)
 from app.modules.capabilities.runtime import CapabilityPort, CapabilityRuntime
 from app.modules.memory.api import get_memory_provider, get_memory_settings
 from app.modules.model_gateway.api import RETRY_AFTER_SECONDS, get_model_gateway
@@ -64,6 +69,12 @@ async def architecture_capability(request: Request) -> CapabilityPort:
     """
     context = InvocationContext(project_id=await request_project_id(request))
     return get_capability_runtime().port(ARCHITECTURE_DESIGN, context)
+
+
+async def planning_capability(request: Request) -> CapabilityPort:
+    """LLMPort for M4's planning service (task decomposition), project-bound."""
+    context = InvocationContext(project_id=await request_project_id(request))
+    return get_capability_runtime().port(PLANNING_PLAN, context)
 
 
 async def request_project_id(request: Request) -> str | None:

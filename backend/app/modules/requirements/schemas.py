@@ -55,12 +55,18 @@ class RequirementsSetApproveRequest(BaseModel):
     """Input to approve a requirements set."""
 
     approved_by: str = Field(min_length=1, max_length=200)
+    project_id: uuid.UUID = Field(
+        default=uuid.UUID(int=0), description="Project that owns the requirements set"
+    )
 
 
 class RequirementsSetLockRequest(BaseModel):
     """Input to lock (freeze) a requirements set."""
 
     locked_by: str = Field(min_length=1, max_length=200)
+    project_id: uuid.UUID = Field(
+        default=uuid.UUID(int=0), description="Project that owns the requirements set"
+    )
 
 
 class RequirementsSetResponse(BaseModel):

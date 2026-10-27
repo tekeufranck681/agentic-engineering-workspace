@@ -33,6 +33,6 @@ export const useArchitectureStore = create<Store>((set, get) => {
     return {
         entries: {},
         generate: (projectId, requirementsSetId, context) => run(projectId, "generate", () => architectureService.generate(projectId, requirementsSetId, context)),
-        read: (projectId, architectureId) => run(projectId, "read", () => architectureService.read(architectureId)),
+        read: (projectId, architectureId) => run(projectId, "read", () => architectureService.read(projectId, architectureId)),
     };
 });
