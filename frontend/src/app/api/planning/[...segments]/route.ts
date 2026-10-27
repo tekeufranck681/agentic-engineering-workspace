@@ -12,9 +12,10 @@ async function proxy(request: Request, context: {
     const read = request.method === "GET" && /^ARCH-\d+$/.test(path);
     const decompose = request.method === "POST" && path === "decompose";
     const readiness = request.method === "POST" && /^tasks\/TASK-\d+\/readiness$/.test(path);
+    const status = request.method === "POST" && /^tasks\/TASK-\d+\/status$/.test(path);
     const headers = { "Cache-Control": "no-store" };
     const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
-    if (!read && !decompose && !readiness)
+    if (!read && !decompose && !readiness && !status)
         return fail("Unsupported planning action.", 400);
     if (read && !projectPattern.test(projectId))
         return fail("A valid project is required to load a plan.", 422);
@@ -35,6 +36,11 @@ async function proxy(request: Request, context: {
                 if (typeof input.context !== "string" || input.context.length > 20000)
                     return fail("Planning context must be at most 20,000 characters.", 422);
                 body = { project_id: input.project_id, architecture_id: input.architecture_id, requirements_set_id: input.requirements_set_id, context: input.context };
+            }
+            else if (status) {
+                if (input.target_status !== "ready")
+                    return fail("Only marking a task ready is supported here.", 422);
+                body = { project_id: input.project_id, target_status: "ready" };
             }
             else
                 body = { project_id: input.project_id };
@@ -64,7 +70,7 @@ async function proxy(request: Request, context: {
             return fail(messages[response.status] ?? "Planning service failed. Reload the plan before retrying.", response.status >= 500 ? 502 : response.status, decompose && response.status >= 500);
         }
         const upstream = await response.json();
-        return Response.json(readiness ? parseReadiness(upstream) : parsePlan(upstream), { headers });
+        return Response.json(status ? { ok: true } : readiness ? parseReadiness(upstream) : parsePlan(upstream), { headers });
     }
     catch {
         return fail(decompose ? "Task creation could not be confirmed. Load the plan before decomposing again." : "Could not reach the planning service. Try again.", 502, decompose && sent);

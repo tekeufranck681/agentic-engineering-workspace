@@ -60,3 +60,47 @@ export async function GET(request: Request, context: {
         return fail("Could not reach the run service. Try again.", 502);
     }
 }
+// Starting work is two server-confirmed steps: create a queued run for a
+// ready task, then ask the orchestrator to execute it.
+export async function POST(request: Request, context: {
+    params: Promise<{
+        segments: string[];
+    }>;
+}) {
+    const { segments } = await context.params;
+    const path = segments.join("/");
+    const headers = { "Cache-Control": "no-store" };
+    const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
+    const start = path === "start";
+    const execute = /^RUN-\d+\/execute$/.test(path);
+    if (!start && !execute)
+        return fail("Unsupported runs action.", 400);
+    let input: { project_id?: unknown; task_id?: unknown };
+    try {
+        input = await request.json();
+    }
+    catch {
+        return fail("Invalid request body.", 400);
+    }
+    if (typeof input.project_id !== "string" || !projectPattern.test(input.project_id) || (start && (typeof input.task_id !== "string" || !/^TASK-\d+$/.test(input.task_id))))
+        return fail("A valid project and task are required.", 422);
+    const base = process.env.BACKEND_API_URL;
+    if (!base)
+        return fail("Run service is not configured. Contact the workspace operator.", 503);
+    try {
+        const response = await fetch(`${base.replace(/\/$/, "")}/runs/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(start ? { project_id: input.project_id, task_id: input.task_id } : { project_id: input.project_id }), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(15000) });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok)
+            return fail(typeof body?.detail === "string" ? body.detail.slice(0, 300) : "The run could not be started.", response.status >= 500 ? 502 : response.status, response.status >= 500);
+        if (start) {
+            const run = body?.run;
+            if (!run || typeof run.id !== "string")
+                return fail("The run could not be confirmed. Check Agent Runs before starting again.", 502, true);
+            return Response.json({ run_id: run.id }, { headers });
+        }
+        return Response.json({ run_id: segments[0], accepted: body?.accepted === true }, { headers });
+    }
+    catch {
+        return fail("The run could not be confirmed. Check Agent Runs before starting again.", 502, true);
+    }
+}
