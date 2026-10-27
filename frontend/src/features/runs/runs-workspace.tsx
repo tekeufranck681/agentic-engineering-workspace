@@ -110,7 +110,7 @@ export function RunsWorkspace({ projectId }: { projectId: string }) {
     const task = state?.detail?.task;
     const attempts = new Set(events.map(e => e.payload.attempt).filter(a => typeof a === "number")).size;
     const connection = state?.connection ?? "idle";
-    return <div className={styles.page}>
+    return <div className={`workspace-page ${styles.page}`}>
   <header className={styles.header}>
    <div className={styles.titleBlock}>
     <h1>Agent Runs</h1>
@@ -123,7 +123,7 @@ export function RunsWorkspace({ projectId }: { projectId: string }) {
   <div className={styles.layout}>
    <nav className={styles.runList} aria-label="Runs">
     <h2>Runs <span>{listEntry?.data ? runs.length : "—"}</span></h2>
-    {runs.length ? <ul>{runs.map(r => <li key={r.id}><button type="button" aria-current={r.id === runId ? "true" : undefined} onClick={() => { setSelectedRun(r.id); setSelectedSeq(undefined); }}><code>{r.id}</code><span>{r.task_id} · attempt {r.attempt}</span><StatusBadge>{r.status}</StatusBadge></button></li>)}</ul>
+    {runs.length ? <ul>{runs.map(r => <li key={r.id}><button type="button" aria-current={r.id === runId ? "true" : undefined} onClick={() => { setSelectedRun(r.id); setSelectedSeq(undefined); }}><code className={styles.runId}>{r.id}</code><span className={styles.runMeta}>{r.task_id} · attempt {r.attempt}</span><span className={styles.runBadge}><StatusBadge>{r.status}</StatusBadge></span></button></li>)}</ul>
             : <p className={styles.muted}>{listEntry?.data ? "No runs yet. A run starts from a ready task in Planning." : "Runs appear here once loaded."}</p>}
     <Link href={`/projects/${projectId}/planning`} className={styles.sideLink}>Go to Planning</Link>
    </nav>
