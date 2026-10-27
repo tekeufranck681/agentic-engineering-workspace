@@ -42,6 +42,8 @@ from app.modules.capabilities.runtime import CapabilityRuntime
 from app.modules.evaluation.capability import MAX_TEST_CODE_CHARS, EvaluationReview, ReviewFinding, build_review_prompt
 from app.modules.evaluation.mapping import ApprovedPlans, CheckBinding, bind_check, covers
 from app.modules.model_gateway.errors import ModelGatewayError
+from app.modules.memory.lessons import VerifiedLesson, record_verified_lesson
+from app.modules.memory.provider import AgentMemoryProvider
 from app.modules.orchestration.ports import ACVerdict, Evaluation
 from app.modules.persistence.evidence_store import EvidenceStore
 from app.modules.persistence.run_models import RunStepRow
@@ -129,13 +131,15 @@ class IndependentACEvaluator:
     """``ACEvaluator`` for the run graph. Holds no per-run state; one instance can serve many runs."""
 
     def __init__(self, runtime: CapabilityRuntime, run_store: RunStore, evidence: EvidenceStore, *,
-                 gateway: ToolGateway | None = None, plans: ApprovedPlans | None = None):
+                 gateway: ToolGateway | None = None, plans: ApprovedPlans | None = None,
+                 memory: AgentMemoryProvider | None = None):
         self.contract = runtime.registry.get(EVALUATION_EVALUATE)  # a runtime without it fails here, not mid-run
         self.runtime = runtime
         self.run_store = run_store
         self.evidence = evidence
         self.gateway = gateway or register_sandbox_tools(ToolGateway())
         self.plans = plans
+        self.memory = memory
 
     async def evaluate(self, run_id: str, task: Task, criteria: list[AcceptanceCriterion],
                        workspace) -> Evaluation:
@@ -149,7 +153,71 @@ class IndependentACEvaluator:
             self.run_store.finish_step(step, status="failed", result={"error": error})
             raise
         self.run_store.finish_step(step, status="succeeded", result=summary)
+        if evaluation.passed:
+            self._record_verified_lessons(run_id, task, criteria, evaluation, step)
         return evaluation
+
+    def _record_verified_lessons(self, run_id: str, task: Task, criteria: list[AcceptanceCriterion],
+                                 evaluation: Evaluation, step: RunStepRow) -> None:
+        """Write lessons only after PASS when this run previously needed diagnosis."""
+        events = self.run_store.events_since(run_id)
+        diagnoses = [event for event in events if event.event_type == "diagnosis.completed"]
+        if not diagnoses:
+            return
+        if self.memory is None:
+            self.run_store.append_event(run_id, "memory.lesson.skipped", {
+                "reason": "no H-MEM provider configured", "after_diagnosis": True,
+            }, step_row_id=step.id)
+            return
+        diagnosis = diagnoses[-1].payload
+        ac_ids = set(diagnosis.get("failing_ac_ids", []))
+        by_id = {ac.id: ac for ac in criteria}
+        for ac_id in sorted(ac_ids & by_id.keys()):
+            prior = self._prior_failure(events, diagnoses[-1].sequence, ac_id)
+            category = self._diagnosis_category(prior)
+            verdict = next((v for v in evaluation.verdicts if v.acceptance_criterion_id == ac_id), None)
+            if verdict is None or verdict.verdict != "PASS":
+                continue
+            evidence_ids = list(dict.fromkeys([*verdict.evidence_ids, *prior.get("evidence_ids", [])]))[:20]
+            lesson = VerifiedLesson(
+                run_id=run_id, task_id=task.id, acceptance_criterion_id=ac_id,
+                acceptance_criterion=f"{by_id[ac_id].title}: {'; '.join(by_id[ac_id].then)}"[:1000],
+                diagnosis_category=category, cause=str(diagnosis.get("cause", ""))[:1000],
+                fix_summary=str(diagnosis.get("required_change", ""))[:1000], verdict="PASS",
+                evaluation_ids=[str(step.id)], evidence_ids=evidence_ids,
+            )
+            try:
+                record_verified_lesson(self.memory, str(task.project_id), lesson)
+            except Exception as exc:
+                # H-MEM is supplemental; a write failure must not alter the evaluator's PASS.
+                self.run_store.append_event(run_id, "memory.lesson.failed", {
+                    "acceptance_criterion_id": ac_id, "error_kind": getattr(exc, "kind", type(exc).__name__),
+                }, step_row_id=step.id)
+
+    @staticmethod
+    def _prior_failure(events: list, diagnosis_sequence: int, ac_id: str) -> dict:
+        for event in reversed(events):
+            if event.sequence >= diagnosis_sequence or event.event_type != "evaluation.completed":
+                continue
+            for verdict in event.payload.get("verdicts", []):
+                if verdict.get("acceptance_criterion_id") == ac_id and verdict.get("verdict") != "PASS":
+                    return verdict
+        return {}
+
+    @staticmethod
+    def _diagnosis_category(verdict: dict) -> str:
+        reason = str(verdict.get("reason", "")).lower()
+        if reason.startswith("executable check failed:"):
+            return "DEFECT"
+        if "independent review found the change contradicts" in reason:
+            return "REVIEW_DEFECT"
+        if "full test suite fails on other tests" in reason:
+            return "REGRESSION"
+        if "importerror" in reason or "syntaxerror" in reason:
+            return "CODE_ERROR"
+        if "full test suite did not complete" in reason:
+            return "SUITE_INCOMPLETE"
+        return "UNCLEAR_REVIEW"
 
     async def _evaluate(self, ctx: ToolContext, step: RunStepRow, task: Task,
                         criteria: list[AcceptanceCriterion], base_sha: str | None) -> tuple[Evaluation, dict]:

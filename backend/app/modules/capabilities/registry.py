@@ -18,6 +18,7 @@ ARCHITECTURE_DESIGN = "architecture.design_change"
 PLANNING_PLAN = "planning.plan_change"
 PLANNING_VALIDATE = "planning.plan_validation"
 EVALUATION_EVALUATE = "evaluation.evaluate"
+DIAGNOSIS_ANALYZE = "diagnosis.analyze"
 
 _GROUNDING = (
     "Work only from the request and the context given. Never invent facts, files, "
@@ -155,6 +156,24 @@ DEFAULT_CONTRACTS = (
                          "github.merge", "deployment.deploy"),
         required_evidence=("test output of every check", "workspace diff", "capability receipt"),
         failure_modes=("diff contradicts the criterion", "check does not exercise the criterion"),
+    ),
+    CapabilityContract(
+        name=DIAGNOSIS_ANALYZE,
+        version="1.0.0",
+        description="Diagnose evaluator-verified failures and propose a bounded correction plan.",
+        instructions=(
+            "You are the diagnosis capability of an autonomous software-engineering workspace. "
+            "Analyze only the failing acceptance criteria and evidence supplied. Identify the likely "
+            "cause and the smallest required change. Never write code, claim a test passed, or invent "
+            "files or evidence. Return only paths within the task's target paths. Environment failures "
+            "are handled before you are called; if the evidence is insufficient, state that clearly."
+        ),
+        required_context=("failing evaluator verdicts", "resolved test output and workspace diff", "target files"),
+        allowed_tools=("sandbox.read_file", "sandbox.diff"),
+        forbidden_tools=("sandbox.write_file", "sandbox.run_tests", "repo.apply_patch", "shell.execute",
+                         "evaluation.record_verdict", "approval.approve", "github.merge", "deployment.deploy"),
+        required_evidence=("evaluation verdicts", "diagnosis capability receipt"),
+        failure_modes=("environment failure", "missing validation check", "unresolvable evidence"),
     ),
 )
 
