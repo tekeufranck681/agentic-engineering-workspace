@@ -2,8 +2,9 @@
 
 Callers look capabilities up by name instead of hard-coding prompts and
 policies. Capability owners refine their contract's instructions and bump its
-version (requirements, architecture and planning belong to M4); M3 owns the
-invocation bounds. Tool names follow architecture §59 and the §50 matrix.
+version (requirements, architecture and planning belong to M4; evaluation
+belongs to M3); M3 owns the invocation bounds. Tool names follow architecture
+§59 and the §50 matrix.
 """
 
 from collections.abc import Iterable
@@ -16,6 +17,7 @@ REQUIREMENTS_ANALYZE = "requirements.analyze_input"
 ARCHITECTURE_DESIGN = "architecture.design_change"
 PLANNING_PLAN = "planning.plan_change"
 PLANNING_VALIDATE = "planning.plan_validation"
+EVALUATION_EVALUATE = "evaluation.evaluate"
 
 _GROUNDING = (
     "Work only from the request and the context given. Never invent facts, files, "
@@ -127,6 +129,32 @@ DEFAULT_CONTRACTS = (
         failure_modes=("criterion without an executable check", "test that cannot fail"),
         # Lessons from earlier runs (e.g. a criterion that once failed) shape the tests (ENG-018).
         recalls_memory=True,
+    ),
+    # ENG-033: reviews only criteria whose executable check already passed in
+    # the sandbox; the evaluator turns its findings into verdicts and never lets
+    # it upgrade a failed or missing check (app.modules.evaluation).
+    CapabilityContract(
+        name=EVALUATION_EVALUATE,
+        version="1.0.0",
+        description="Independently review passed acceptance checks against the criterion, the test code and the diff.",
+        instructions=(
+            "You are the independent evaluator of an autonomous software-engineering workspace. "
+            "You did not write the change and you never change code. Each acceptance criterion "
+            "you are given has an executable check that already passed in the sandbox; decide "
+            "from the criterion, the test code and the diff whether that pass can be trusted. "
+            "Answer keep when the change implements the criterion and the check exercises it. "
+            "Answer fail only when the diff clearly contradicts the criterion, for example it "
+            "special-cases the test's inputs or still breaks the criterion on another path, and "
+            "quote the offending line. Answer unverified when the check does not really exercise "
+            "the criterion or you cannot tell. Work only from the evidence given; never invent "
+            "files, tests or results."
+        ),
+        required_context=("locked acceptance criteria", "passed executable checks", "test code", "workspace diff"),
+        allowed_tools=("sandbox.read_file", "sandbox.run_tests", "sandbox.diff", "evaluation.record_verdict"),
+        forbidden_tools=("sandbox.write_file", "repo.apply_patch", "shell.execute", "approval.approve",
+                         "github.merge", "deployment.deploy"),
+        required_evidence=("test output of every check", "workspace diff", "capability receipt"),
+        failure_modes=("diff contradicts the criterion", "check does not exercise the criterion"),
     ),
 )
 
