@@ -24,10 +24,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.modules.model_gateway.config import ModelGatewaySettings
-from app.modules.model_gateway.errors import ModelGatewayError, StructuredOutputError
+from app.modules.model_gateway.errors import (
+    ModelGatewayError,
+    ModelLaneUnavailableError,
+    ModelProviderError,
+    ModelRequestError,
+    StructuredOutputError,
+)
 from app.modules.model_gateway.provider import (
     ModelProvider,
     ProviderHealth,
@@ -47,11 +53,31 @@ STRUCTURED_INSTRUCTIONS = (
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.S | re.I)
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S | re.I)
 _MAX_ERROR_DETAILS = 5
+# How a runtime says a lane or model cannot be served, matched on its own error
+# code and message (never our wording around them). An unknown model or no
+# route is permanent; "unavailable" is permanent only on a 4xx, since a 5xx
+# saying so may be a transient outage that a retry should still get.
+_MODEL_WORD = re.compile(r"model|lane|route", re.I)
+_UNKNOWN_MODEL = re.compile(
+    r"not[ _-]?found|unknown|unsupported|does not exist|no such|no (eligible |available )?route|not[ _-]?served",
+    re.I,
+)
+_UNAVAILABLE_MODEL = re.compile(r"not[ _-]?available|unavailable", re.I)
 
 
 class GenerationResult(BaseModel):
     text: str
     receipt: ModelCallReceipt
+
+
+class LaneStatus(BaseModel):
+    """One configured lane and whether the runtime can serve it."""
+
+    capability: str | None = Field(description="None for the default lane")
+    lane: str
+    routing_mode: bool = Field(description="meterless/* lanes are routed by the runtime")
+    advertised: bool | None = Field(description="Pinned model listed by GET /v1/models; None for routing modes")
+    runtime_state: str
 
 
 @dataclass(frozen=True)
@@ -176,17 +202,20 @@ class ModelGateway:
                 max_tokens=max_tokens or self._settings.max_tokens,
                 temperature=self._settings.temperature,
             )
-        except ModelGatewayError as exc:
-            exc.receipt = ModelCallReceipt(
+        except ModelGatewayError as caught:
+            error = self._classify(caught, lane, capability)
+            error.receipt = ModelCallReceipt(
                 **common,
                 outcome="error",
                 latency_ms=int((time.monotonic() - started) * 1000),
-                error_kind=exc.kind,
-                error_code=exc.code,
-                retryable=exc.retryable,
+                error_kind=error.kind,
+                error_code=error.code,
+                retryable=error.retryable,
             )
-            self._record(exc.receipt)
-            raise
+            self._record(error.receipt)
+            if error is caught:
+                raise
+            raise error from caught
         receipt = ModelCallReceipt(
             **common,
             outcome="ok",
@@ -199,10 +228,46 @@ class ModelGateway:
             response_chars=len(reply.content),
             prompt_tokens=reply.prompt_tokens,
             completion_tokens=reply.completion_tokens,
+            cost_usd=reply.cost_usd,
             finish_reason=reply.finish_reason,
             latency_ms=reply.latency_ms,
         )
         return reply, receipt
+
+    def _classify(self, error: ModelGatewayError, lane: str, capability: str | None) -> ModelGatewayError:
+        """A refusal that names an unknown or unrouteable model becomes a lane error naming the lane."""
+        if not isinstance(error, (ModelRequestError, ModelProviderError)) or not _names_unavailable_model(error):
+            return error
+        return ModelLaneUnavailableError(
+            f"lane {lane} is not available on {self._provider.name} for capability {capability or '(none)'}: "
+            f"{error}. Route the capability to a model the runtime serves (GET /v1/models) or to a "
+            "meterless/* lane in MODEL_GATEWAY_LANES.",
+            code=error.code,
+            status_code=error.status_code,
+        )
+
+    async def lane_report(self) -> list["LaneStatus"]:
+        """Each configured lane and whether the runtime advertises it (one models request, no model call).
+
+        Routing modes (``meterless/*``) are served by the runtime's router and are
+        not checked against the list; pinned model ids must be advertised.
+        """
+        health = await self.health()
+        advertised = set(health.model_ids)
+        lanes = {None: self._settings.default_lane, **self._settings.lanes}
+        report = []
+        for capability, lane in lanes.items():
+            routing_mode = lane.startswith("meterless/")
+            report.append(
+                LaneStatus(
+                    capability=capability,
+                    lane=lane,
+                    routing_mode=routing_mode,
+                    advertised=None if routing_mode else lane in advertised,
+                    runtime_state=health.state,
+                )
+            )
+        return report
 
     def _structured_failure(
         self,
@@ -229,13 +294,14 @@ class ModelGateway:
     def _record(self, receipt: ModelCallReceipt) -> None:
         self.receipts.record(receipt)
         logger.info(
-            "model call %s capability=%s requested=%s answered_by=%s (%s) receipt=%s%s "
-            "outcome=%s%s latency_ms=%s tokens=%s/%s",
+            "model call %s capability=%s requested=%s answered_by=%s (%s) via=%s receipt=%s%s "
+            "outcome=%s%s latency_ms=%s tokens=%s/%s cost_usd=%s",
             receipt.call_id,
             receipt.capability,
             receipt.requested_model,
             receipt.answered_by,
             receipt.attribution_source,
+            receipt.routed_provider,
             receipt.runtime_receipt_id,
             " from_cache" if receipt.from_cache else "",
             receipt.outcome,
@@ -243,6 +309,7 @@ class ModelGateway:
             receipt.latency_ms,
             receipt.prompt_tokens,
             receipt.completion_tokens,
+            receipt.cost_usd,
         )
 
 
@@ -277,6 +344,15 @@ def extract_json(text: str) -> object:
         if 0 <= start < end:
             return json.loads(cleaned[start : end + 1])
         raise
+
+
+def _names_unavailable_model(error: ModelGatewayError) -> bool:
+    text = f"{error.code or ''} {error.detail or ''}"
+    if not _MODEL_WORD.search(text):
+        return False
+    if _UNKNOWN_MODEL.search(text):
+        return True
+    return isinstance(error, ModelRequestError) and bool(_UNAVAILABLE_MODEL.search(text))
 
 
 def _messages(prompt: str, system: str | None) -> list[ProviderMessage]:

@@ -11,6 +11,7 @@ from app.core.logging import setup_logging
 from app.modules.capabilities.api import install_capability_error_handlers
 from app.modules.context.api import install_context_error_handlers
 from app.modules.context.api import router as context_router
+from app.modules.integrations.router import router as integrations_router
 from app.modules.memory.api import install_memory_error_handlers
 from app.modules.memory.api import router as memory_router
 from app.modules.model_gateway.api import install_model_error_handlers
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(runs_sse_router)
     app.include_router(memory_router)
     app.include_router(context_router)
+    app.include_router(integrations_router)
     install_model_error_handlers(app)
     install_capability_error_handlers(app)
     install_memory_error_handlers(app)

@@ -9,57 +9,33 @@ a fresh data volume and runs one phase per fresh backend process:
 * ``session_2``: a later architecture design in the same project recalls the
   lesson from the engine's persisted store: the prompt carries it, and the
   receipt and the log say which memory, with what score and why;
+* ``feature`` (tests/e2e/test_engine_feature.py, ENG-048): the same request
+  with and without the lesson;
 * ``down``: with the sidecar stopped, the capability and the API fail closed.
 
 Skipped unless HMEM_LIVE=1 and HMEM_PHASE names the phase. The model is
-scripted unless NIGHTSHIFT_LIVE=1, which sends the architecture call to
+scripted unless NIGHTSHIFT_LIVE=1, which sends the architecture calls to
 Nightshift instead.
 """
 
 import json
 import logging
 import os
-import uuid
-from collections.abc import Iterator
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.core.db import get_session
-from app.domain.fakes import FakeLLM
-from app.main import create_app
 from app.modules.capabilities import api as capabilities_api
-from app.modules.capabilities.registry import ARCHITECTURE_DESIGN, default_registry
-from app.modules.capabilities.runtime import CapabilityRuntime
-from app.modules.memory.api import get_memory_provider
+from app.modules.capabilities.registry import ARCHITECTURE_DESIGN
 from app.modules.memory.recall import RECALL_HEADER
-from app.modules.model_gateway.api import build_model_gateway
-from app.modules.model_gateway.config import ModelGatewaySettings
-from app.modules.model_gateway.gateway import ModelGateway
-from app.modules.persistence.models import Project
-from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
-from app.modules.requirements.service import LLMRequirementSpec, LLMRequirementsAnalysis, RequirementsService
-from tests.model_fakes import ScriptedProvider
+from app.modules.requirements.service import LLMRequirementSpec, LLMRequirementsAnalysis
+from tests.engine_fixtures import LESSON, add_project, client_for, engine_runtime, seed_locked_requirements
 
 PHASE = os.environ.get("HMEM_PHASE")
 pytestmark = pytest.mark.skipif(
     os.environ.get("HMEM_LIVE") != "1", reason="set HMEM_LIVE=1 (run_meterless_engine.sh) to use the real sidecar"
 )
 
-LESSON = {
-    "run_id": "RUN-0001",
-    "task_id": "TASK-0003",
-    "acceptance_criterion_id": "AC-014-02",
-    "acceptance_criterion": "Failed or unconfirmed payment must not activate the subscription",
-    "diagnosis_category": "IMPLEMENTATION",
-    "cause": "BillingService activated the subscription before payment confirmation was established",
-    "fix_summary": "activate only after the payment is confirmed",
-    "verdict": "PASS",
-    "evaluation_ids": ["EVAL-0001", "EVAL-0002"],
-    "contract_ids": ["CON-001"],
-    "evidence_ids": ["EVD-0007"],
-}
 # A later, related request in the same project (session 2).
 ANALYSIS = LLMRequirementsAnalysis(
     summary="Monthly subscription plans",
@@ -98,20 +74,7 @@ def phase(name: str):
 
 @pytest.fixture()
 def project_id(session: Session) -> str:
-    project = uuid.UUID(os.environ["HMEM_TEST_PROJECT_ID"])
-    session.add(Project(id=project, name="hmem-live", description="ENG-018 live engine check"))
-    session.commit()
-    return str(project)
-
-
-def client_for(session: Session) -> TestClient:
-    app = create_app()
-
-    def override_get_session() -> Iterator[Session]:
-        yield session
-
-    app.dependency_overrides[get_session] = override_get_session
-    return TestClient(app)
+    return add_project(session, os.environ["HMEM_TEST_PROJECT_ID"], "hmem-live")
 
 
 @phase("session_1")
@@ -135,29 +98,10 @@ def test_session_1_records_a_verified_lesson(session, project_id):
     print("RECORDED", json.dumps({k: record[k] for k in ("id", "source", "domain", "tags", "confidence", "provenance")}))
 
 
-async def seed_locked_requirements(session: Session, project_id: str) -> str:
-    """The requirements step of the later request (not under test here)."""
-    service = RequirementsService(
-        llm=FakeLLM({"LLMRequirementsAnalysis": ANALYSIS}), repo=SqlAlchemyArtifactRepository(session)
-    )
-    requirements_set, _ = await service.analyze_project(uuid.UUID(project_id), "Add monthly subscription plans")
-    await service.approve_requirements_set(uuid.UUID(project_id), requirements_set.id)
-    await service.lock_requirements_set(uuid.UUID(project_id), requirements_set.id)
-    return str(requirements_set.id)
-
-
-def live_runtime() -> tuple[CapabilityRuntime, ScriptedProvider | None]:
-    if os.environ.get("NIGHTSHIFT_LIVE") == "1":
-        return CapabilityRuntime(build_model_gateway(), default_registry(), memory=get_memory_provider()), None
-    provider = ScriptedProvider(json.dumps(ARCHITECTURE))
-    gateway = ModelGateway(provider, ModelGatewaySettings(_env_file=None))
-    return CapabilityRuntime(gateway, default_registry(), memory=get_memory_provider()), provider
-
-
 @phase("session_2")
 async def test_session_2_recalls_it_into_an_architecture_design(session, project_id, monkeypatch, caplog):
-    requirements_set_id = await seed_locked_requirements(session, project_id)
-    runtime, provider = live_runtime()
+    requirements_set_id = await seed_locked_requirements(session, project_id, ANALYSIS)
+    runtime, provider, _ = engine_runtime(json.dumps(ARCHITECTURE))
     monkeypatch.setattr(capabilities_api, "get_capability_runtime", lambda: runtime)
     monkeypatch.setattr(logging.getLogger("app.modules.capabilities.runtime"), "disabled", False)
 
@@ -169,16 +113,15 @@ async def test_session_2_recalls_it_into_an_architecture_design(session, project
         history = client.get(f"/projects/{project_id}/memory/{lesson['id']}/history").json()["entries"]
 
     assert designed.status_code == 200, designed.text
-    receipt = runtime.receipts.recent()[0]
+    receipt = [r for r in runtime.receipts.recent() if r.output_schema == "LLMArchitectureAnalysis"][0]
     assert (receipt.capability, receipt.capability_version, receipt.outcome) == (ARCHITECTURE_DESIGN, "1.1.0", "ok")
     assert receipt.project_id == project_id
     assert receipt.memory.status == "recalled" and receipt.memory.query_source == "prompt"
     recalled = {m.memory_id: m for m in receipt.memory.memories}
     assert lesson["id"] in recalled and recalled[lesson["id"]].source == "run:RUN-0001"
     assert recalled[lesson["id"]].relevance >= receipt.memory.threshold
-    if provider is not None:
-        user = provider.calls[0]["messages"][1].content
-        assert RECALL_HEADER in user and lesson["content"] in user and f"<{lesson['id']}>" in user
+    user = provider.calls[0]["messages"][1].content
+    assert RECALL_HEADER in user and lesson["content"] in user and f"<{lesson['id']}>" in user
     assert f"H-MEM recalled {lesson['id']} relevance=" in caplog.text
     assert [entry["action"] for entry in history][:2] == ["create", "read"]  # session 1 wrote it, session 2 read it
 
@@ -189,8 +132,8 @@ async def test_session_2_recalls_it_into_an_architecture_design(session, project
 
 @phase("down")
 async def test_down_the_capability_and_the_api_fail_closed(session, project_id, monkeypatch):
-    requirements_set_id = await seed_locked_requirements(session, project_id)
-    runtime, provider = live_runtime()
+    requirements_set_id = await seed_locked_requirements(session, project_id, ANALYSIS)
+    runtime, provider, _ = engine_runtime(json.dumps(ARCHITECTURE))
     monkeypatch.setattr(capabilities_api, "get_capability_runtime", lambda: runtime)
 
     with client_for(session) as client:
@@ -201,6 +144,7 @@ async def test_down_the_capability_and_the_api_fail_closed(session, project_id, 
 
     assert designed.status_code == 503, designed.text
     assert designed.json()["error"]["kind"] == "capability_memory_unavailable"
-    assert provider is None or provider.calls == []  # no model call without the memory
+    assert provider.calls == []  # no model call without the memory
     assert (health.status_code, health.json()["error"]["kind"]) == (503, "memory_unavailable")
     print("DOWN", designed.json()["error"]["message"])
+

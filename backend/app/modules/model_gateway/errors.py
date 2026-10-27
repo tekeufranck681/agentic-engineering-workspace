@@ -20,11 +20,22 @@ class ModelGatewayError(Exception):
     receipt: "ModelCallReceipt | None" = None
     """Set by the gateway: the receipt of the failed call."""
 
-    def __init__(self, message: str, *, retryable: bool | None = None, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool | None = None,
+        code: str | None = None,
+        status_code: int | None = None,
+        detail: str | None = None,
+    ) -> None:
         super().__init__(message)
         if retryable is not None:
             self.retryable = retryable
         self.code = code
+        self.status_code = status_code
+        self.detail = detail
+        """The provider's own error message, when it sent one (redacted)."""
 
 
 class ModelConfigError(ModelGatewayError):
@@ -64,6 +75,17 @@ class ModelRequestError(ModelGatewayError):
     """The provider rejected the request: unknown lane or model, bad input."""
 
     kind = "model_request_rejected"
+
+
+class ModelLaneUnavailableError(ModelGatewayError):
+    """The runtime does not serve the requested lane or pinned model (ENG-043).
+
+    Raised instead of a generic request or provider error when the runtime says
+    the model is unknown, unavailable or has no route. Not retryable: the lane
+    configuration (MODEL_GATEWAY_LANES) or the runtime's models must change.
+    """
+
+    kind = "model_lane_unavailable"
 
 
 class ModelResponseError(ModelGatewayError):
