@@ -959,3 +959,12 @@ a.arch-chip:hover, button.arch-chip:hover { border-color: var(--primary); color:
 .delivery-section .task-table td .arch-chip + .arch-chip, .delivery-task-ref + .delivery-task-ref { margin-left: 4px; }
 .delivery-task-ref { font-size: 12px; }
 .delivery-meta > div { display: block; padding: 0; border: 0; }
+/* Directional affordance: arrows lean toward where the button goes. */
+[data-slot="button"]:hover .lucide-arrow-right { transform: translateX(2px); }
+[data-slot="button"]:hover .lucide-arrow-up-right { transform: translate(1px, -1px); }
+[data-slot="button"]:hover .lucide-arrow-down { transform: translateY(2px); }
+::selection { background: rgb(37 99 235 / 0.16); color: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"], [data-slot="button"] svg { transition: none; }
+  [data-slot="button"]:active { transform: none; }
+}
