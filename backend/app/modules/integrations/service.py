@@ -19,6 +19,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from app.modules.integrations.config import IntegrationSettings
 from app.modules.integrations.registry import LastSuccessRegistry
 from app.modules.integrations.schemas import (
     ALL_SPONSORS,
@@ -47,7 +48,6 @@ TRUTH_STATEMENT = "SELECT * FROM NY_TAXI.customers LIMIT 5"
 LIGHTNING_STATEMENT = "SHOW LIGHTNING DATABASES"
 # Chat ping used only by the smoke command's --chat check; tiny and bounded.
 CHAT_PING = "Reply with the single word: ok"
-CHAT_LANE = "meterless/auto"
 _OK_ENGINE_STATES = frozenset({"ok", "healthy", "up", "passing", "ready"})
 
 ClientFactory = Callable[[], Any]
@@ -80,11 +80,13 @@ class SponsorHealthService:
         nightshift_factory: ClientFactory | None = None,
         engine_factory: ClientFactory | None = None,
         registry: LastSuccessRegistry | None = None,
+        settings: IntegrationSettings | None = None,
     ) -> None:
         self._zetaris_factory = zetaris_factory or default_zetaris_factory
         self._nightshift_factory = nightshift_factory or default_nightshift_factory
         self._engine_factory = engine_factory or default_engine_factory
         self._registry = registry or LastSuccessRegistry()
+        self._settings = settings or IntegrationSettings()
         self._secrets: tuple[str, ...] = ()
 
     @classmethod
@@ -207,9 +209,9 @@ class SponsorHealthService:
             if include_chat:
                 try:
                     chat = client.chat(
-                        CHAT_LANE,
+                        self._settings.chat_lane,
                         [ChatMessage(role="user", content=CHAT_PING)],
-                        max_tokens=16,
+                        max_tokens=self._settings.chat_max_tokens,
                     )
                 except NightshiftError as exc:
                     # Discovery succeeded but a real model call failed: the
@@ -224,7 +226,7 @@ class SponsorHealthService:
                     )
                 receipt = chat.evidence.receipt
                 provenance["chat"] = {
-                    "lane": CHAT_LANE,
+                    "lane": self._settings.chat_lane,
                     "call_id": chat.evidence.call_id,
                     "served_model": chat.evidence.served_model,
                     "receipt_id": receipt.receipt_id if receipt else None,
