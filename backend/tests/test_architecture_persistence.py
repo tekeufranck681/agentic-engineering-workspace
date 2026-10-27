@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from alembic import command
 from alembic.script import ScriptDirectory
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.core.db import get_session
 from app.domain.adr import ArchitectureDecision
