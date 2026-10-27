@@ -9,14 +9,16 @@
 # 1. builds services/hmem; the official conformance suite runs inside the
 #    build against the vendored module the sidecar serves;
 # 2. starts the sidecar on a fresh data volume and a private network;
-# 3. runs tests/integration/test_meterless_engine.py once per phase, each in a
-#    fresh backend container: session_1, then a sidecar restart, session_2,
-#    then the sidecar is stopped and phase down runs;
+# 3. runs the live engine tests once per phase, each in a fresh backend
+#    container: session_1, then a sidecar restart, session_2, feature (ENG-048:
+#    the same request with and without the lesson), then the sidecar is
+#    stopped and phase down runs;
 # 4. writes the logs, the store's ledger and a summary to <log-dir>.
 #
 # Sponsor code runs only in the sidecar container. With NIGHTSHIFT_LIVE=1 the
-# architecture call goes to Nightshift (repo-root .env); otherwise the model is
-# scripted and the engine is still real. Exit 0 when every step passed.
+# architecture calls go to Nightshift (repo-root .env; MODEL_GATEWAY_LANES is
+# passed through to pin one model); otherwise the model is scripted and the
+# engine is still real. Exit 0 when every step passed.
 
 set -euo pipefail
 
@@ -66,18 +68,26 @@ wait_healthy() {
 
 failures=0
 run_phase() {
-  local phase=$1 status=0 mount workdir live_env=()
+  local phase=$1 status=0 mount workdir host ip live_args=()
   if [ "${NIGHTSHIFT_LIVE:-}" = 1 ]; then
-    mount=(-v "$ROOT:/repo:ro"); workdir=/repo/backend; live_env=(-e NIGHTSHIFT_LIVE=1)
+    mount=(-v "$ROOT:/repo:ro"); workdir=/repo/backend; live_args=(-e NIGHTSHIFT_LIVE=1)
+    [ -n "${MODEL_GATEWAY_LANES:-}" ] && live_args+=(-e MODEL_GATEWAY_LANES="$MODEL_GATEWAY_LANES")
+    # Containers cannot resolve mDNS (.local) names: resolve on the host and map it.
+    host=$(sed -nE 's#^NIGHTSHIFT_BASE_URL=[a-z]+://([^:/]+).*#\1#p' "$ROOT/.env" | tail -1)
+    if [[ "$host" == *.local ]]; then
+      ip=$(getent ahostsv4 "$host" | awk 'NR==1 {print $1}')
+      [ -n "$ip" ] && live_args+=(--add-host "$host:$ip")
+    fi
   else
     mount=(-v "$ROOT/backend:/repo/backend:ro"); workdir=/repo/backend
   fi
   docker run --rm --network "$NAME" --user "$(id -u):$(id -g)" \
     -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e PYTHONUSERBASE=/deps \
     -e HMEM_LIVE=1 -e HMEM_PHASE="$phase" -e HMEM_BASE_URL="http://$NAME:8099" -e HMEM_TEST_PROJECT_ID="$PROJECT" \
-    "${live_env[@]}" -v "$PYDEPS:/deps" "${mount[@]}" -w "$workdir" python:3.12-slim bash -c \
+    "${live_args[@]}" -v "$PYDEPS:/deps" "${mount[@]}" -w "$workdir" python:3.12-slim bash -c \
     "pip install -q --user --no-warn-script-location -r requirements.txt && python -m pytest -p no:cacheprovider \
-       -o addopts='' -q -rA -s -o log_cli=true --log-cli-level=INFO tests/integration/test_meterless_engine.py" \
+       -o addopts='' -q -rA -s -o log_cli=true --log-cli-level=INFO tests/integration/test_meterless_engine.py \
+       tests/e2e/test_engine_feature.py" \
     >"$LOG_DIR/$phase.log" 2>&1 || status=$?
   printf '%-16s exit %s  %s\n' "$phase" "$status" "$(grep -E '[0-9]+ (passed|failed)' "$LOG_DIR/$phase.log" | tail -1)" >>"$SUMMARY"
   [ "$status" -eq 0 ] && grep -qE '1 passed' "$LOG_DIR/$phase.log" || failures=$((failures + 1))
@@ -88,6 +98,7 @@ run_phase session_1
 docker restart "$NAME" >/dev/null && wait_healthy
 echo "sidecar restarted between sessions" >>"$SUMMARY"
 run_phase session_2
+run_phase feature
 docker exec "$NAME" cat "/data/$PROJECT/ledger.jsonl" >"$LOG_DIR/ledger.jsonl"
 docker exec "$NAME" cat "/data/$PROJECT/state.json" >"$LOG_DIR/state.json"
 docker logs "$NAME" >"$LOG_DIR/sidecar.log" 2>&1
@@ -99,6 +110,8 @@ run_phase down
   echo
   echo "recall log lines:"
   grep -hE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(H-MEM recalled|no H-MEM lesson)' "$LOG_DIR/session_2.log" | sed 's/^/  /' || true
+  echo "feature pair:"
+  grep -hE '^(DESIGN_WITHOUT|DESIGN_WITH|LEDGER) ' "$LOG_DIR/feature.log" | cut -c1-400 | sed 's/^/  /' || true
   echo "ledger actions:  $(python3 -I -c 'import json,sys; print([json.loads(l)["action"] for l in open(sys.argv[1])])' "$LOG_DIR/ledger.jsonl")"
   echo "failed_steps:    $failures"
 } >>"$SUMMARY"
