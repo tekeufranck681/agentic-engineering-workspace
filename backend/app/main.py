@@ -24,6 +24,7 @@ from app.modules.architecture.router import router as architecture_router
 from app.modules.planning.router import router as planning_router
 from app.modules.runs.sse import router as runs_sse_router
 from app.modules.runs.router import router as runs_router
+from app.modules.orchestration.api import router as run_execute_router
 from app.modules.delivery.router import router as delivery_router
 
 
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(architecture_router)
     app.include_router(planning_router)
     app.include_router(runs_router)
+    app.include_router(run_execute_router)
     app.include_router(delivery_router)
     app.include_router(runs_sse_router)
     app.include_router(runs_sse_router)
