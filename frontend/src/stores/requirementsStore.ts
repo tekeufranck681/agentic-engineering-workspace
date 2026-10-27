@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { rememberArtifact } from "@/lib/recent-artifacts";
+import { recallArtifact, rememberArtifact } from "@/lib/recent-artifacts";
+import type { ValidationPlanSummary } from "@/lib/api/validation-contract";
 import { ApiError } from "@/lib/api/client";
 import type { Criterion, RequirementsResult } from "@/lib/api/requirements-contract";
 import { requirementsService } from "@/services/requirementsService";
@@ -17,12 +18,32 @@ type CriteriaEntry = {
 type Store = {
     entries: Record<string, Entry>;
     criteria: Record<string, CriteriaEntry>;
+    plans: Record<string, { data?: ValidationPlanSummary; pending?: "generate" | "approve" | "load"; error?: string }>;
+    planAction: (projectId: string, action: "generate" | "approve" | "load", setId: string) => Promise<void>;
     loadCriteria: (projectId: string, setId: string, generate?: boolean) => Promise<void>;
     execute: (projectId: string, command: "analyze" | "read" | "approve" | "lock", value: string, reviewer?: string) => Promise<void>;
 };
 export const useRequirementsStore = create<Store>((set, get) => ({
     entries: {},
     criteria: {},
+    plans: {},
+    planAction: async (projectId, action, setId) => {
+        const old = get().plans[projectId] ?? {};
+        if (old.pending)
+            return;
+        const planId = old.data?.id ?? recallArtifact(projectId, "vplan");
+        if (action !== "generate" && !planId)
+            return;
+        set(s => ({ plans: { ...s.plans, [projectId]: { ...old, pending: action, error: undefined } } }));
+        try {
+            const data = action === "generate" ? await requirementsService.generatePlan(projectId, setId) : action === "approve" ? await requirementsService.approvePlan(projectId, planId!) : await requirementsService.readPlan(projectId, planId!);
+            rememberArtifact(projectId, "vplan", data.id);
+            set(s => ({ plans: { ...s.plans, [projectId]: { data } } }));
+        }
+        catch (e) {
+            set(s => ({ plans: { ...s.plans, [projectId]: { ...old, pending: undefined, error: e instanceof Error ? e.message : "Validation plan request failed." } } }));
+        }
+    },
     loadCriteria: async (projectId, setId, generate = false) => {
         const old = get().criteria[projectId] ?? {};
         if (old.pending)

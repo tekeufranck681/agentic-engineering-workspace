@@ -26,6 +26,8 @@ export function RequirementsWorkspace({ projectId }: {
     const execute = useRequirementsStore(s => s.execute);
     const criteriaEntry = useRequirementsStore(s => s.criteria[projectId]);
     const loadCriteria = useRequirementsStore(s => s.loadCriteria);
+    const planEntry = useRequirementsStore(s => s.plans[projectId]);
+    const planAction = useRequirementsStore(s => s.planAction);
     const [brief, setBrief] = useState("");
     const [setId, setSetId] = useState("");
     const [reviewer, setReviewer] = useState("");
@@ -41,9 +43,11 @@ export function RequirementsWorkspace({ projectId }: {
     const showComposer = !data || composing;
     const loadedSetId = entry?.data?.set.id;
     useEffect(() => {
-        if (loadedSetId && projectId !== "preview")
+        if (loadedSetId && projectId !== "preview") {
             void loadCriteria(projectId, loadedSetId);
-    }, [loadCriteria, loadedSetId, projectId]);
+            void planAction(projectId, "load", loadedSetId);
+        }
+    }, [loadCriteria, loadedSetId, planAction, projectId]);
     // Reopen the last saved set from the backend after a reload.
     const reopened = useRef(false);
     useEffect(() => {
@@ -139,6 +143,13 @@ export function RequirementsWorkspace({ projectId }: {
      <p className={styles.criteriaNote}>{criteriaEntry?.data?.length ? `${criteriaEntry.data.length} testable criteria. Evaluation checks every task against them.` : "Runs need testable criteria to evaluate. Generate them for every requirement in this set."}</p>
      {criteriaEntry?.error && <p className={styles.criteriaError} role="alert">{criteriaEntry.error}</p>}
      <Button variant={criteriaEntry?.data?.length ? "outline" : "default"} disabled={preview || Boolean(criteriaEntry?.pending)} onClick={() => void loadCriteria(projectId, data.set.id, true)}>{criteriaEntry?.pending === "generate" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Sparkles size={15} aria-hidden="true"/>}{criteriaEntry?.pending === "generate" ? "Generating criteria…" : criteriaEntry?.data?.length ? "Generate more criteria" : "Generate acceptance criteria"}</Button>
+     <h3>Validation plan</h3>
+     <p className={styles.criteriaNote}>{planEntry?.data ? <><code>{planEntry.data.id}</code> v{planEntry.data.version} · {planEntry.data.status} · {planEntry.data.cases.length} test case{planEntry.data.cases.length === 1 ? "" : "s"}. {planEntry.data.status === "accepted" ? "Evaluation runs these tests for each criterion." : "Approve it so evaluation can use these tests."}</> : "Evaluation needs an approved plan that maps each criterion to an executable test."}</p>
+     {planEntry?.error && <p className={styles.criteriaError} role="alert">{planEntry.error}</p>}
+     {planEntry?.data && planEntry.data.cases.length > 0 && <ul className={styles.planCases}>{planEntry.data.cases.map(c => <li key={c.test_id}><code>{c.ac_id}</code> {c.title}{c.checks[0] && <span>{c.checks[0]}</span>}</li>)}</ul>}
+     {planEntry?.data?.status === "draft"
+                ? <Button disabled={preview || Boolean(planEntry?.pending)} onClick={() => void planAction(projectId, "approve", data.set.id)}>{planEntry?.pending === "approve" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Check size={15} aria-hidden="true"/>}Approve validation plan</Button>
+                : <Button variant={planEntry?.data ? "outline" : "default"} disabled={preview || !locked || !criteriaEntry?.data?.length || Boolean(planEntry?.pending)} title={!locked ? "Lock the specification first" : !criteriaEntry?.data?.length ? "Generate acceptance criteria first" : undefined} onClick={() => void planAction(projectId, "generate", data.set.id)}>{planEntry?.pending === "generate" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Sparkles size={15} aria-hidden="true"/>}{planEntry?.pending === "generate" ? "Planning tests…" : planEntry?.data ? "Generate a new plan" : "Generate validation plan"}</Button>}
      <h3>Assumptions</h3>
      {data.set.assumptions.length ? <ul>{data.set.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul> : <p className={styles.muted}>None returned.</p>}
      <h3>Open questions</h3>
