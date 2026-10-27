@@ -3,6 +3,8 @@ import { parseEvent, parseRunDetail, parseRuns, type RunEvent } from "@/lib/api/
 const query = (projectId: string) => `?project_id=${encodeURIComponent(projectId)}`;
 export const runsService = {
     list: (projectId: string) => apiRequest(`/runs/list${query(projectId)}`, parseRuns),
+    start: (projectId: string, taskId: string) => apiRequest("/runs/start", (b) => ({ run_id: String((b as { run_id: unknown }).run_id) }), { method: "POST", body: { project_id: projectId, task_id: taskId } }),
+    execute: (projectId: string, runId: string) => apiRequest(`/runs/${encodeURIComponent(runId)}/execute`, (b) => b, { method: "POST", body: { project_id: projectId } }),
     detail: (projectId: string, runId: string) => apiRequest(`/runs/${encodeURIComponent(runId)}${query(projectId)}`, parseRunDetail),
     // Reads the SSE stream frame by frame. Resolves "finished" when the server
     // reports a terminal run, "ended" if the connection closes without one.

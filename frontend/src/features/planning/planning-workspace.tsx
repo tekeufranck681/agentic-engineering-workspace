@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { planningService } from "@/services/planningService";
+import { runsService } from "@/services/runsService";
 import { AlertCircle, ArrowRight, Columns3, FolderOpen, ListChecks, LoaderCircle, Play, ShieldCheck, Sparkles, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +36,25 @@ export function PlanningWorkspace({ projectId }: {
     const [view, setView] = useState<"table" | "board">("table");
     const [selected, setSelected] = useState<string>();
     const data = entry?.data;
+    const router = useRouter();
+    const [starting, setStarting] = useState(false);
+    const [startError, setStartError] = useState<string>();
+    // Server-confirmed sequence: mark the task ready, create the run, execute it.
+    const runTask = async (task: PlanTask) => {
+        setStarting(true);
+        setStartError(undefined);
+        try {
+            if (task.status === "pending")
+                await planningService.markReady(projectId, task.id);
+            const { run_id } = await runsService.start(projectId, task.id);
+            await runsService.execute(projectId, run_id);
+            router.push(`/projects/${projectId}/runs`);
+        }
+        catch (e) {
+            setStartError(e instanceof Error ? e.message : "The run could not be started.");
+            setStarting(false);
+        }
+    };
     const reopened = useRef(false);
     useEffect(() => {
         if (reopened.current || projectId === "preview" || data)
@@ -102,9 +124,10 @@ export function PlanningWorkspace({ projectId }: {
       <h4>Blockers</h4>
       {readiness?.error ? <p className="field-hint" role="alert">{readiness.error}</p> : blockersOf(current).length ? <ul className="task-blockers">{blockersOf(current).map((reason, i) => { const ref = reason.match(/TASK-\d+/)?.[0]; return <li key={i}><AlertCircle size={13} aria-hidden="true"/><span>{reason}</span>{ref && <TaskRef id={ref} known={ids.has(ref)} onSelect={setSelected}/>}</li>; })}</ul> : <p className="field-hint">{readiness && !readiness.pending ? "No blockers reported." : "Readiness has not been checked."}</p>}
       <h4>Validation plan</h4><p className="field-hint">The task contract does not include a validation plan yet. Acceptance criteria above define what must pass.</p>
+      {startError && <p className="field-hint" role="alert">{startError}</p>}
       <div className="state-actions task-actions">
        <Button variant="outline" disabled={preview || readiness?.pending} onClick={() => void checkReadiness(projectId, current.id)}>{readiness?.pending ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <ShieldCheck size={15} aria-hidden="true"/>}Check readiness</Button>
-       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error ? <Button asChild><Link href={`/projects/${projectId}/runs`}><Play size={15} aria-hidden="true"/>Run task</Link></Button> : <Button disabled title="Run is enabled after the backend confirms readiness"><Play size={15} aria-hidden="true"/>Run task</Button>}
+       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title="Run is enabled after the backend confirms readiness"><Play size={15} aria-hidden="true"/>Run task</Button>}
       </div>
      </>}
     </div>
