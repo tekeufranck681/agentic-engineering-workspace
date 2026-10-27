@@ -54,6 +54,8 @@ class ProviderReply(BaseModel):
     completion_tokens: int | None = None
     finish_reason: str | None = None
     latency_ms: int = Field(ge=0)
+    cost_usd: float | None = None
+    """What the runtime says the call cost, when its receipt carries a cost."""
 
 
 class ProviderHealth(BaseModel):
@@ -103,7 +105,13 @@ def translate_nightshift_error(exc: NightshiftError) -> ModelGatewayError:
         (gateway_error for source, gateway_error in _TRANSLATIONS if isinstance(exc, source)),
         ModelProviderError,
     )
-    return target(f"nightshift: {exc}", retryable=exc.retryable, code=exc.code)
+    return target(
+        f"nightshift: {exc}",
+        retryable=exc.retryable,
+        code=exc.code,
+        status_code=exc.status_code,
+        detail=exc.detail,
+    )
 
 
 class NightshiftProvider:
@@ -169,6 +177,7 @@ class NightshiftProvider:
             completion_tokens=usage.completion_tokens if usage else None,
             finish_reason=evidence.finish_reason,
             latency_ms=evidence.latency_ms,
+            cost_usd=receipt.cost_usd if receipt else None,
         )
 
     def close(self) -> None:

@@ -13,6 +13,8 @@ import threading
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.capabilities.budgets import DEFAULT_INVOCATION_BUDGET, Budget
+
 _NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 _VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -49,6 +51,9 @@ class CapabilityContract(BaseModel):
     """Retries of retryable provider failures (timeouts, 429, 5xx); infrastructure only."""
 
     retry_backoff_seconds: float = Field(default=2.0, ge=0)
+
+    budget: Budget | None = DEFAULT_INVOCATION_BUDGET
+    """Ceilings for one invocation (ENG-043); a run's own ledger is passed by the caller."""
 
     recalls_memory: bool = False
     """Recall the project's lessons from H-MEM into the prompt before the model call

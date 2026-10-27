@@ -13,6 +13,8 @@ CapabilityPort, the LLMPort that M4's services use). Either way the runtime
   engineering correction (architecture §53);
 * enforces the contract timeout and checks the CancellationToken around every
   model call;
+* checks the invocation's budget and the caller's run budget before every
+  model call and charges each call to them (ENG-043);
 * for contracts that recall memory, adds the project's relevant H-MEM lessons
   to the prompt first, and fails closed when the engine cannot answer;
 * records one CapabilityInvocationReceipt per invocation.
@@ -32,6 +34,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from app.modules.capabilities.budgets import BudgetLedger
 from app.modules.capabilities.contract import CancellationToken, CapabilityContract, InvocationContext
 from app.modules.capabilities.errors import (
     CapabilityCancelledError,
@@ -41,7 +44,7 @@ from app.modules.capabilities.errors import (
     CapabilityOutputError,
     CapabilityTimeoutError,
 )
-from app.modules.capabilities.receipts import CapabilityInvocationReceipt
+from app.modules.capabilities.receipts import CapabilityInvocationReceipt, ModelCallRouting
 from app.modules.capabilities.registry import CapabilityRegistry
 from app.modules.memory.errors import AgentMemoryError
 from app.modules.memory.models import MemoryRecallEvidence
@@ -75,10 +78,13 @@ class _Progress:
     calls: list[ModelCallReceipt] = field(default_factory=list)
     repairs: int = 0
     retries: int = 0
+    ledgers: list[BudgetLedger] = field(default_factory=list)
 
     def note(self, receipt: ModelCallReceipt | None) -> None:
         if receipt is not None:
             self.calls.append(receipt)
+            for ledger in self.ledgers:
+                ledger.charge(receipt)
 
 
 class CapabilityRuntime:
@@ -102,10 +108,12 @@ class CapabilityRuntime:
         self._recall_top_n = recall_top_n
         self._recall_threshold = recall_threshold
 
-    def port(self, capability: str, context: InvocationContext | None = None) -> "CapabilityPort":
-        """An LLMPort bound to one registered capability."""
+    def port(
+        self, capability: str, context: InvocationContext | None = None, budget: BudgetLedger | None = None
+    ) -> "CapabilityPort":
+        """An LLMPort bound to one registered capability (and optionally a run's budget)."""
         self.registry.get(capability)  # unknown names fail here, not on first use
-        return CapabilityPort(self, capability, context)
+        return CapabilityPort(self, capability, context, budget)
 
     async def invoke(
         self,
@@ -114,8 +122,12 @@ class CapabilityRuntime:
         *,
         context: InvocationContext | None = None,
         cancel: CancellationToken | None = None,
+        budget: BudgetLedger | None = None,
     ) -> CapabilityResult:
-        """Render the contract's prompt template from ``inputs`` and run it."""
+        """Render the contract's prompt template from ``inputs`` and run it.
+
+        ``budget`` is the caller's run ledger, charged on top of the invocation's own.
+        """
         contract = self.registry.get(capability)
         if contract.prompt_template is None or contract.output_schema is None:
             raise CapabilityInputError(
@@ -123,7 +135,7 @@ class CapabilityRuntime:
                 capability=contract.name,
             )
         prompt = _render(contract, inputs)
-        return await self._run(contract, prompt, contract.output_schema, context, cancel)
+        return await self._run(contract, prompt, contract.output_schema, context, cancel, budget)
 
     async def run_prompt(
         self,
@@ -133,9 +145,10 @@ class CapabilityRuntime:
         *,
         context: InvocationContext | None = None,
         cancel: CancellationToken | None = None,
+        budget: BudgetLedger | None = None,
     ) -> CapabilityResult[T]:
         """Run a caller-built prompt under the capability's contract."""
-        return await self._run(self.registry.get(capability), prompt, schema, context, cancel)
+        return await self._run(self.registry.get(capability), prompt, schema, context, cancel, budget)
 
     # ---------------------------------------------------------------- internals
 
@@ -146,9 +159,14 @@ class CapabilityRuntime:
         schema: type[T],
         context: InvocationContext | None,
         cancel: CancellationToken | None,
+        budget: BudgetLedger | None = None,
     ) -> CapabilityResult[T]:
         context = context or InvocationContext()
         progress = _Progress()
+        if contract.budget is not None:
+            progress.ledgers.append(BudgetLedger(contract.budget, scope=f"{contract.name} invocation"))
+        if budget is not None:
+            progress.ledgers.append(budget)
         memory: MemoryRecallEvidence | None = None
         invocation_id = str(uuid.uuid4())
         started_at, started = datetime.now(timezone.utc), time.monotonic()
@@ -175,6 +193,10 @@ class CapabilityRuntime:
                 duration_ms=int((time.monotonic() - started) * 1000),
                 started_at=started_at,
                 memory=memory,
+                calls=[ModelCallRouting.of(call) for call in progress.calls],
+                tokens=sum((call.prompt_tokens or 0) + (call.completion_tokens or 0) for call in progress.calls),
+                cost_usd=_reported_cost(progress.calls),
+                budgets=[ledger.usage() for ledger in progress.ledgers],
             )
             self._record(receipt)
             return receipt
@@ -214,6 +236,8 @@ class CapabilityRuntime:
         request = prompt
         while True:
             _raise_if_cancelled(cancel, contract)
+            for ledger in progress.ledgers:
+                ledger.check(contract.name)
             try:
                 result = await self._gateway.structured_call(
                     request, schema, capability=contract.name, instructions=contract.instructions
@@ -317,15 +341,27 @@ class CapabilityPort:
     """LLMPort for services that build their own prompts: same bounds, repair and receipts."""
 
     def __init__(
-        self, runtime: CapabilityRuntime, capability: str, context: InvocationContext | None = None
+        self,
+        runtime: CapabilityRuntime,
+        capability: str,
+        context: InvocationContext | None = None,
+        budget: BudgetLedger | None = None,
     ) -> None:
         self._runtime = runtime
         self.capability = capability
         self._context = context
+        self._budget = budget
 
     async def generate_structured(self, prompt: str, schema: type[T]) -> T:
-        result = await self._runtime.run_prompt(self.capability, prompt, schema, context=self._context)
+        result = await self._runtime.run_prompt(
+            self.capability, prompt, schema, context=self._context, budget=self._budget
+        )
         return result.value
+
+
+def _reported_cost(calls: list[ModelCallReceipt]) -> float | None:
+    costs = [call.cost_usd for call in calls if call.cost_usd is not None]
+    return round(sum(costs), 6) if costs else None
 
 
 def _memory_summary(memory: MemoryRecallEvidence | None) -> str | None:

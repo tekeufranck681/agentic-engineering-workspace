@@ -150,11 +150,13 @@ class NightshiftClient:
                 f"nightshift or the model behind the lane failed (HTTP {status}){suffix}: {detail}",
                 status_code=status,
                 code=code,
+                detail=detail,
             )
         raise NightshiftRequestError(
             f"nightshift rejected the request (HTTP {status}){suffix}: {detail}",
             status_code=status,
             code=code,
+            detail=detail,
         )
 
     @staticmethod

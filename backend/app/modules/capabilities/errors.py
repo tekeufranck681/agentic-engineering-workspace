@@ -20,6 +20,25 @@ class CapabilityError(Exception):
         self.invocation_id = invocation_id
 
 
+class CapabilityBudgetError(CapabilityError):
+    """A budget ceiling (model calls, tokens, time or cost) is spent: no further model call."""
+
+    kind = "capability_budget_exceeded"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        capability: str | None = None,
+        invocation_id: str | None = None,
+        measure: str | None = None,
+        scope: str | None = None,
+    ) -> None:
+        super().__init__(message, capability=capability, invocation_id=invocation_id)
+        self.measure = measure
+        self.scope = scope
+
+
 class CapabilityMemoryError(CapabilityError):
     """The contract recalls project memory and the engine could not answer: fail closed."""
 
