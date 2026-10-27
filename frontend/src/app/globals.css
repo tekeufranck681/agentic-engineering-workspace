@@ -938,3 +938,24 @@ a.arch-chip:hover, button.arch-chip:hover { border-color: var(--primary); color:
 .task-blockers svg { margin-top: 4px; flex-shrink: 0; }
 .task-actions { margin-top: 24px; }
 @media(max-width: 1000px) { .plan-grid { grid-template-columns: 1fr; } }
+/* ENG-036 delivery workspace */
+.delivery-section { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+.delivery-section > .section-heading { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.delivery-section h2 { font-size: 14px; }
+.delivery-section > .field-hint { padding: 16px 18px; }
+.delivery-cards { display: grid; gap: 0; }
+.delivery-card { padding: 16px 18px; font-size: 13px; }
+.delivery-card + .delivery-card { border-top: 1px solid var(--border); }
+.delivery-card header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--primary); }
+.delivery-pr-link { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--foreground); text-decoration: none; }
+.delivery-pr-link:hover { color: var(--primary); }
+.delivery-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 14px 0 0; }
+.delivery-meta dt { font-size: 11.5px; color: var(--muted-foreground); }
+.delivery-meta dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.delivery-meta code { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.delivery-card h4 { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; margin: 18px 0 8px; }
+.delivery-card .task-paths a { color: var(--foreground); text-decoration: none; }
+.delivery-card .task-paths a:hover { color: var(--primary); }
+.delivery-section .task-table td .arch-chip + .arch-chip, .delivery-task-ref + .delivery-task-ref { margin-left: 4px; }
+.delivery-task-ref { font-size: 12px; }
+.delivery-meta > div { display: block; padding: 0; border: 0; }
