@@ -7,7 +7,9 @@ Usage, on the backend host with NIGHTSHIFT_* in the local .env:
     python -m app.modules.model_gateway.smoke --lane nvidia/nemotron-3.5-lightning-30b-a3b --evidence-out ...
 
 It POSTs the canonical demo brief to the real FastAPI app's
-/requirements/analyze (in-process ASGI client). M4's requirements service gets
+/requirements/analyze (in-process ASGI client), on a throwaway in-memory
+database holding one project, since the requirements API persists through M2's
+repository and checks the project exists. M4's requirements service gets
 its model through the capability runtime, so the request runs app ->
 capability runtime -> gateway -> Nightshift -> model. ``--lane`` pins the lane
 of requirements.analyze_input for this run, e.g. a Nemotron model for the
@@ -28,7 +30,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
+import app.modules.persistence.architecture_models  # noqa: F401  (tables for create_all)
+import app.modules.persistence.evidence_models  # noqa: F401
+import app.modules.persistence.requirements_models  # noqa: F401
+import app.modules.persistence.run_models  # noqa: F401
+from app.core.db import Base, get_session, make_session_factory
 from app.main import create_app
 from app.modules.capabilities.api import get_capability_runtime
 from app.modules.capabilities.receipts import CapabilityInvocationReceipt
@@ -38,6 +47,7 @@ from app.modules.model_gateway.errors import ModelConfigError
 from app.modules.model_gateway.receipts import ModelCallReceipt
 from app.modules.nightshift.config import NightshiftSettings
 from app.modules.nightshift.errors import NightshiftConfigError
+from app.modules.persistence.models import Project
 
 DEMO_BRIEF = (
     "Add subscription billing. A subscription only becomes ACTIVE after payment "
@@ -128,6 +138,23 @@ def render_markdown(
     return "\n".join(lines)
 
 
+def _throwaway_database():
+    """An in-memory database with the product tables and one project, and a session dependency on it."""
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = make_session_factory(engine)
+    project_id = uuid.uuid4()
+    with factory() as session:
+        session.add(Project(id=project_id, name="model-gateway-smoke", description="live smoke, discarded"))
+        session.commit()
+
+    def session_dependency():
+        with factory() as session:
+            yield session
+
+    return session_dependency, project_id
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Application request through the capability runtime and ModelGateway (ENG-008, ENG-028)"
@@ -148,10 +175,11 @@ def main(argv: list[str] | None = None) -> int:
 
     lane = gateway.lane_for(REQUIREMENTS_CAPABILITY)
     print(f"POST /requirements/analyze, {REQUIREMENTS_CAPABILITY} on {lane} ...")
-    with TestClient(create_app()) as client:
-        response = client.post(
-            "/requirements/analyze", json={"project_id": str(uuid.uuid4()), "brief": DEMO_BRIEF}
-        )
+    session_dependency, project_id = _throwaway_database()
+    app = create_app()
+    app.dependency_overrides[get_session] = session_dependency
+    with TestClient(app) as client:
+        response = client.post("/requirements/analyze", json={"project_id": str(project_id), "brief": DEMO_BRIEF})
     body = response.json()
     invocations = list(reversed(get_capability_runtime().receipts.recent()))
     receipts = list(reversed(gateway.receipts.recent()))
