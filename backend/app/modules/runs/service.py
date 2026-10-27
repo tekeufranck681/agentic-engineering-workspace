@@ -24,6 +24,17 @@ from app.domain.task import Task
 class RunsService:
     """Creates and drives run lifecycle; hands M5 an execution package."""
 
+    @staticmethod
+    def _bump_and_seal(artifact) -> None:
+        """Advance `version` and re-seal before saving a mutation.
+
+        Persistence is append-only versioned (unique on project+id+version), so
+        a mutation must land as a NEW version row, as in the architecture and
+        requirements services.
+        """
+        artifact.version += 1
+        artifact.seal()
+
     def __init__(self, repo: RepositoryPort) -> None:
         self._repo = repo
 
@@ -72,6 +83,7 @@ class RunsService:
         run.status = target
         if target == RunStatus.failed:
             run.error = error
+        self._bump_and_seal(run)
         await self._repo.save_artifact(run)
         return run
 

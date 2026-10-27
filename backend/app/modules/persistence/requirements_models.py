@@ -79,7 +79,7 @@ class _ArtifactColumnsMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(80), nullable=True)
     trace: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     derived_from: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 

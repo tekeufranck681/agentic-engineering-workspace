@@ -14,6 +14,9 @@ async function proxy(request: Request, context: {
     const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
     if (!read && !analyze && !transition)
         return fail("Unsupported requirements action.", 400);
+    const projectId = new URL(request.url).searchParams.get("project_id") ?? "";
+    if (read && !/^[0-9a-f-]{36}$/i.test(projectId))
+        return fail("A valid project is required to open a requirements set.", 422);
     const base = process.env.BACKEND_API_URL;
     if (!base)
         return fail("Requirements service is not configured. Contact the workspace operator.", 503);
@@ -30,7 +33,9 @@ async function proxy(request: Request, context: {
                 const key = path.endsWith("approve") ? "approved_by" : "locked_by";
                 if (typeof input[key] !== "string" || !input[key].trim() || input[key].length > 200)
                     return fail("Enter a reviewer name of 1–200 characters.", 422);
-                body = { [key]: input[key].trim() };
+                if (typeof input.project_id !== "string" || !/^[0-9a-f-]{36}$/i.test(input.project_id))
+                    return fail("A valid project is required.", 422);
+                body = { [key]: input[key].trim(), project_id: input.project_id };
             }
         }
         catch {
@@ -42,6 +47,8 @@ async function proxy(request: Request, context: {
         const url = new URL(base.replace(/\/$/, "") + "/requirements/" + path);
         if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
             return fail("Requirements service URL is invalid.", 503);
+        if (read)
+            url.searchParams.set("project_id", projectId);
         sent = true;
         const response = await fetch(url, { method: request.method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(analyze ? 120000 : 8000) });
         if (!response.ok) {

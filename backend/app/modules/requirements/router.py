@@ -27,6 +27,10 @@ from app.modules.requirements.schemas import (
 
 router = APIRouter(prefix="/requirements", tags=["requirements"])
 
+# Callers that predate project scoping on set reads/transitions resolve against
+# the nil project; real clients pass the set's project_id.
+LEGACY_PROJECT_ID = uuid.UUID(int=0)
+
 
 def get_service(
     llm: LLMPort = Depends(requirements_capability),
@@ -95,8 +99,8 @@ async def approve_requirements_set(
 ) -> RequirementsSetResponse:
     """Approve a requirements set (draft -> in_review -> approved)."""
     try:
-        await svc.approve_requirements_set(uuid.UUID(int=0), set_id)
-        rset, requirements = await svc.get_requirements_set(uuid.UUID(int=0), set_id)
+        await svc.approve_requirements_set(payload.project_id, set_id)
+        rset, requirements = await svc.get_requirements_set(payload.project_id, set_id)
         return RequirementsSetResponse(set=rset, requirements=requirements)
     except TransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -112,8 +116,8 @@ async def lock_requirements_set(
 ) -> RequirementsSetResponse:
     """Lock a requirements set (approved -> locked, immutable)."""
     try:
-        await svc.lock_requirements_set(uuid.UUID(int=0), set_id)
-        rset, requirements = await svc.get_requirements_set(uuid.UUID(int=0), set_id)
+        await svc.lock_requirements_set(payload.project_id, set_id)
+        rset, requirements = await svc.get_requirements_set(payload.project_id, set_id)
         return RequirementsSetResponse(set=rset, requirements=requirements)
     except TransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -124,13 +128,12 @@ async def lock_requirements_set(
 @router.get("/set/{set_id}", response_model=RequirementsSetResponse)
 async def get_requirements_set(
     set_id: str,
+    project_id: uuid.UUID = LEGACY_PROJECT_ID,
     svc: RequirementsService = Depends(get_service),
 ) -> RequirementsSetResponse:
     """Retrieve a requirements set and its member requirements."""
     try:
-        rset, requirements = await svc.get_requirements_set(
-            uuid.UUID(int=0), set_id
-        )
+        rset, requirements = await svc.get_requirements_set(project_id, set_id)
         return RequirementsSetResponse(set=rset, requirements=requirements)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

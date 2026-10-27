@@ -125,11 +125,6 @@ async def test_seeding_twice_is_refused(session):
         await seed(session, REPO)
 
 
-@pytest.mark.xfail(strict=True, raises=Exception, reason=(
-    "Integration bug for M4/M2: PlanningService.check_readiness, update_task_status and "
-    "RunsService.transition re-save the same artifact version, which M2's append-only "
-    "SqlAlchemyArtifactRepository rejects (UNIQUE project_id, id, version). Passes on the "
-    "InMemoryRepository only. Remove this marker when fixed."))
 async def test_status_changes_work_on_the_real_sql_repository(session):
     scenario = await seed(session, REPO)
     repo = SqlAlchemyArtifactRepository(session)

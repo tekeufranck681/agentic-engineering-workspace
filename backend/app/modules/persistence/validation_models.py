@@ -1,4 +1,4 @@
-"""ORM model for validation plans (0006, ENG-039).
+"""ORM model for validation plans (0007, ENG-039).
 
 Same per-kind table rule as 0002/0005: shared Artifact columns via
 ``_ArtifactColumnsMixin``, append-only versions (approval lands as a new

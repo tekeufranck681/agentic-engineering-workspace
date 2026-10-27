@@ -43,7 +43,7 @@ from app.modules.persistence.validation_models import VALIDATION_ROW_CLASS_BY_KI
 
 ROW_CLASS_BY_KIND["run"] = RunRow
 ROW_CLASS_BY_KIND.update(ARCH_ROW_CLASS_BY_KIND)  # 0005: arch, ADR, contract, task
-ROW_CLASS_BY_KIND.update(VALIDATION_ROW_CLASS_BY_KIND)  # 0006: validation plans (ENG-039)
+ROW_CLASS_BY_KIND.update(VALIDATION_ROW_CLASS_BY_KIND)  # 0007: validation plans (ENG-039)
 
 
 class SqlAlchemyArtifactRepository:

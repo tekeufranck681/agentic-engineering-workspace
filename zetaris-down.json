@@ -1,0 +1,17 @@
+{
+  "ran_at": "2026-10-27T19:52:36.218239+00:00",
+  "phase": "down",
+  "sponsor": "zetaris",
+  "overall": "unavailable",
+  "check": {
+    "sponsor": "zetaris",
+    "display_name": "Zetaris governed data layer",
+    "runtime": true,
+    "status": "unavailable",
+    "checked_at": "2026-10-27T19:52:36.173565Z",
+    "latency_ms": null,
+    "detail": "zetaris check failed: cannot reach zetaris at http://localhost:8888/api/v1.0: [WinError 10061] No connection could be made because the target machine actively refused it",
+    "provenance": {},
+    "last_success": null
+  }
+}

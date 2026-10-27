@@ -6,7 +6,7 @@ callback is idempotent) becomes a plan whose test intents assert PENDING
 before payment and ACTIVE only after the confirmed event. Then the matrix
 (gaps and uncovered criteria shown, never assumed), approval as a new version
 with stable test ids, staleness after a criterion changes, the refusals, the
-API on the real tables and the 0006 migration.
+API on the real tables and the 0007 migration.
 """
 
 import uuid
@@ -303,7 +303,7 @@ async def test_the_api_answers_404_and_409(api, session):
     assert missing_project.status_code == 404
 
 
-def test_the_0006_migration_creates_the_table(tmp_path, monkeypatch):
+def test_the_0007_migration_creates_the_table(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'chain.db'}")
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
@@ -311,6 +311,6 @@ def test_the_0006_migration_creates_the_table(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     engine = create_engine(f"sqlite:///{tmp_path / 'chain.db'}")
     assert "validation_plans" in inspect(engine).get_table_names()
-    command.downgrade(config, "0005")
+    command.downgrade(config, "0006")
     assert "validation_plans" not in inspect(engine).get_table_names()
     engine.dispose()

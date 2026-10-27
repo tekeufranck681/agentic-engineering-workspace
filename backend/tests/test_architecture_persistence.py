@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
 from alembic import command
+from alembic.script import ScriptDirectory
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
@@ -161,7 +162,7 @@ def test_alembic_0005_chain_and_tables(tmp_path, monkeypatch):
     head = engine.connect().execute(
         text("SELECT version_num FROM alembic_version")
     ).scalar_one()
-    assert head == ScriptDirectory.from_config(config).get_current_head()  # 0005 or any later revision
+    assert head == ScriptDirectory.from_config(config).get_current_head()  # newest migration, whatever it is
 
     command.downgrade(config, "base")
     assert not {"architectures", "adrs", "engineering_contracts", "tasks"} & set(
@@ -298,3 +299,40 @@ def test_full_architecture_flow_persists_end_to_end(full_client, session: Sessio
     got = full_client.get(f"/architecture/{arch_id}")
     assert got.status_code == 200
     assert len(got.json()["decisions"]) == 2
+
+
+def test_every_content_hash_column_fits_a_domain_hash():
+    """Regression: VARCHAR(64) rejected the 71-char "sha256:<hex>" hash on PostgreSQL.
+
+    SQLite does not enforce VARCHAR lengths, so check the declared length directly.
+    """
+    from app.core.db import Base
+    from app.domain.hashing import content_hash
+
+    needed = len(content_hash({"any": "payload"}))
+    columns = [t.c.content_hash for t in Base.metadata.tables.values() if "content_hash" in t.c]
+    assert len(columns) >= 9
+    for column in columns:
+        assert column.type.length >= needed, f"{column.table.name}.content_hash is VARCHAR({column.type.length})"
+
+
+def test_read_and_accept_are_scoped_to_the_real_project(full_client, session: Session):
+    """Regression: GET/accept resolved every id against the nil project (404)."""
+    project = Project(name="real-arch", description=None)
+    session.add(project)
+    session.commit()
+    pid = str(project.id)
+    assert full_client.post("/requirements/analyze", json={"project_id": pid, "brief": "Billing"}).status_code == 200
+    assert full_client.post("/requirements/set/RSET-001/approve", json={"approved_by": "m1", "project_id": pid}).status_code == 200
+    assert full_client.post("/requirements/set/RSET-001/lock", json={"locked_by": "m1", "project_id": pid}).status_code == 200
+    gen = full_client.post("/architecture/generate", json={"project_id": pid, "requirements_set_id": "RSET-001"})
+    assert gen.status_code == 200, gen.text
+    arch_id = gen.json()["architecture"]["id"]
+
+    got = full_client.get(f"/architecture/{arch_id}", params={"project_id": pid})
+    assert got.status_code == 200, got.text
+    assert got.json()["architecture"]["project_id"] == pid
+
+    acc = full_client.post(f"/architecture/{arch_id}/accept", json={"accepted_by": "m1", "project_id": pid})
+    assert acc.status_code == 200, acc.text
+    assert acc.json()["architecture"]["status"] == "accepted"

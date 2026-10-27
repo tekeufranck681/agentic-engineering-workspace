@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { RequirementsWorkspace } from "@/features/requirements/requirements-workspace";
 import { OverviewWorkspace } from "@/features/overview/overview-workspace";
+import { ArchitectureWorkspace } from "@/features/architecture/architecture-workspace";
+import { PlanningWorkspace } from "@/features/planning/planning-workspace";
+import { DeliveryWorkspace } from "@/features/delivery/delivery-workspace";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { workspaces } from "@/lib/workspaces";
@@ -14,6 +17,9 @@ export default async function WorkspacePage({
   const section = workspaces.find((item) => item.slug === workspace);
   if (!section) notFound();
   if (workspace === "requirements") return <RequirementsWorkspace key={projectId} projectId={projectId} />;
+  if (workspace === "architecture") return <ArchitectureWorkspace key={projectId} projectId={projectId} />;
+  if (workspace === "planning") return <PlanningWorkspace key={projectId} projectId={projectId} />;
+  if (workspace === "delivery") return <DeliveryWorkspace key={projectId} projectId={projectId} />;
   if (workspace === "overview" && projectId !== "preview")
     return <OverviewWorkspace projectId={projectId} />;
   if (workspace === "overview")

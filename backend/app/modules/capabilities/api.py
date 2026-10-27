@@ -24,6 +24,7 @@ from app.modules.capabilities.errors import (
 )
 from app.modules.capabilities.registry import (
     ARCHITECTURE_DESIGN,
+    PLANNING_PLAN,
     PLANNING_VALIDATE,
     REQUIREMENTS_ANALYZE,
     default_registry,
@@ -69,6 +70,12 @@ async def architecture_capability(request: Request) -> CapabilityPort:
     """
     context = InvocationContext(project_id=await request_project_id(request))
     return get_capability_runtime().port(ARCHITECTURE_DESIGN, context)
+
+
+async def planning_capability(request: Request) -> CapabilityPort:
+    """LLMPort for M4's planning service (task decomposition), project-bound."""
+    context = InvocationContext(project_id=await request_project_id(request))
+    return get_capability_runtime().port(PLANNING_PLAN, context)
 
 
 def validation_capability(project_id: uuid.UUID) -> CapabilityPort:
