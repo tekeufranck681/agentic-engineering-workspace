@@ -1,0 +1,44 @@
+{
+  "ran_at": "2026-10-27T19:53:27.629971+00:00",
+  "phase": "up",
+  "sponsor": "zetaris",
+  "overall": "verified",
+  "check": {
+    "sponsor": "zetaris",
+    "display_name": "Zetaris governed data layer",
+    "runtime": true,
+    "status": "verified",
+    "checked_at": "2026-10-27T19:53:27.583371Z",
+    "latency_ms": 10345,
+    "detail": "governed REST query returned real rows with grounded evidence",
+    "provenance": {
+      "datasources": [
+        "aew_pg"
+      ],
+      "lightning_database_count": 3,
+      "truth_statement": "SELECT * FROM NY_TAXI.customers LIMIT 5",
+      "truth_row_count": 5,
+      "query_id": "0d6b8d8a-20f2-4c40-815f-581f7f0f3a3a",
+      "request_id": "fdc6f253-f598-416f-8d23-42dad516ff74",
+      "org_id": "1",
+      "endpoint": "http://localhost:8888/api/v1.0/sql-editor/sqls/run",
+      "duration_ms": 10345
+    },
+    "last_success": {
+      "at": "2026-10-27T19:53:27.583332Z",
+      "provenance": {
+        "datasources": [
+          "aew_pg"
+        ],
+        "lightning_database_count": 3,
+        "truth_statement": "SELECT * FROM NY_TAXI.customers LIMIT 5",
+        "truth_row_count": 5,
+        "query_id": "0d6b8d8a-20f2-4c40-815f-581f7f0f3a3a",
+        "request_id": "fdc6f253-f598-416f-8d23-42dad516ff74",
+        "org_id": "1",
+        "endpoint": "http://localhost:8888/api/v1.0/sql-editor/sqls/run",
+        "duration_ms": 10345
+      }
+    }
+  }
+}
