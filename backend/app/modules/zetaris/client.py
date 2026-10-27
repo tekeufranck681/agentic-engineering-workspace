@@ -77,6 +77,18 @@ class ZetarisClient:
 
     # ------------------------------------------------------------------ HTTP
 
+    def _redact(self, text: str) -> str:
+        """Strip the configured API key from any wire-derived string.
+
+        A sponsor (or a proxy in front of it) may echo the bearer token back
+        inside an error body or transport exception. Every message that can
+        contain wire text is redacted before it becomes a typed exception, so
+        the credential cannot reach tool records, manifest unknowns, run
+        events, SSE payloads or logs. Mirrors NightshiftClient._redact.
+        """
+        secret = self._settings.api_key.get_secret_value() if self._settings.api_key else ""
+        return text.replace(secret, "[REDACTED]") if secret else text
+
     def _request(
         self, method: str, path: str, json_body: dict | None = None
     ) -> tuple[object, str]:
@@ -96,7 +108,7 @@ class ZetarisClient:
             ) from exc
         except httpx.TransportError as exc:
             raise ZetarisUnavailableError(
-                f"cannot reach zetaris at {self._base}: {exc}"
+                f"cannot reach zetaris at {self._base}: {self._redact(str(exc))}"
             ) from exc
 
         if response.status_code in (401, 403):
@@ -107,12 +119,12 @@ class ZetarisClient:
         if response.status_code == 400:
             raise ZetarisRequestError(
                 "zetaris rejected the request (HTTP 400): check the numeric "
-                f"org id and the statement. Body: {response.text[:MAX_ERROR_BODY]}"
+                f"org id and the statement. Body: {self._redact(response.text)[:MAX_ERROR_BODY]}"
             )
         if response.status_code != 200:
             raise ZetarisRequestError(
                 f"zetaris returned HTTP {response.status_code}: "
-                f"{response.text[:MAX_ERROR_BODY]}"
+                f"{self._redact(response.text)[:MAX_ERROR_BODY]}"
             )
         try:
             return response.json(), request_id
