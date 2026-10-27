@@ -1,0 +1,19 @@
+{
+  "fixtureOnly": true,
+  "requests": [
+    {
+      "url": "http://localhost:3016/api/requirements/analyze",
+      "method": "POST"
+    },
+    {
+      "url": "http://localhost:3016/api/requirements/set/RSET-001/approve",
+      "method": "POST"
+    },
+    {
+      "url": "http://localhost:3016/api/requirements/set/RSET-001/lock",
+      "method": "POST"
+    }
+  ],
+  "confirmationGate": true,
+  "lockedReadOnly": true
+}

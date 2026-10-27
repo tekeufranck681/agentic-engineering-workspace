@@ -1,0 +1,175 @@
+{
+  "errors": [],
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "overflow": false,
+      "font": "geist, \"geist Fallback\", Arial, Helvetica, sans-serif",
+      "links": [
+        {
+          "text": "Skip to content",
+          "href": "#landing-main"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "Workflow",
+          "href": "#workflow"
+        },
+        {
+          "text": "Why this workspace",
+          "href": "#principles"
+        },
+        {
+          "text": "GitHub",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        },
+        {
+          "text": "Open workspace",
+          "href": "/projects"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Explore the workspace",
+          "href": "/projects/preview/requirements"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        }
+      ],
+      "fonts": [
+        "geist",
+        "geistMono"
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "font": "geist, \"geist Fallback\", Arial, Helvetica, sans-serif",
+      "links": [
+        {
+          "text": "Skip to content",
+          "href": "#landing-main"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "Workflow",
+          "href": "#workflow"
+        },
+        {
+          "text": "Why this workspace",
+          "href": "#principles"
+        },
+        {
+          "text": "GitHub",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        },
+        {
+          "text": "Open workspace",
+          "href": "/projects"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Explore the workspace",
+          "href": "/projects/preview/requirements"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        }
+      ],
+      "fonts": [
+        "geist",
+        "geistMono"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "overflow": false,
+      "font": "geist, \"geist Fallback\", Arial, Helvetica, sans-serif",
+      "links": [
+        {
+          "text": "Skip to content",
+          "href": "#landing-main"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "Workflow",
+          "href": "#workflow"
+        },
+        {
+          "text": "Why this workspace",
+          "href": "#principles"
+        },
+        {
+          "text": "GitHub",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        },
+        {
+          "text": "Open workspace",
+          "href": "/projects"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Explore the workspace",
+          "href": "/projects/preview/requirements"
+        },
+        {
+          "text": "Create a project",
+          "href": "/projects/new"
+        },
+        {
+          "text": "Engineering workspace",
+          "href": "/"
+        },
+        {
+          "text": "",
+          "href": "https://github.com/tekeufranck681/agentic-engineering-workspace"
+        }
+      ],
+      "fonts": [
+        "geist",
+        "geistMono"
+      ]
+    }
+  ],
+  "exampleTabs": "pointer and keyboard passed",
+  "mobileMenu": "open and Escape focus restoration passed"
+}

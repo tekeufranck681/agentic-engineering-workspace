@@ -1,4 +1,5 @@
 "use client";
+import { Plus, RefreshCw, FolderGit2, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { useProjectsStore } from "@/stores/projectsStore";
@@ -23,11 +24,11 @@ export function ProjectList() {
             onClick={query.retry}
             disabled={query.loading}
           >
-            Refresh
+            <RefreshCw size={14} aria-hidden="true" /> Refresh
           </Button>
           <Button asChild>
             <Link href="/projects/new" onClick={clearCreateError}>
-              Create project
+              <Plus size={16} aria-hidden="true" /> Create project
             </Link>
           </Button>
         </div>
@@ -44,6 +45,7 @@ export function ProjectList() {
           {query.data.map((project) => (
             <li key={project.id}>
               <Link href={`/projects/${project.id}/overview`}>
+                <FolderGit2 className="project-folder" size={22} aria-hidden="true" />
                 <div>
                   <span className="project-list-name">{project.name}</span>
                   {project.description && <p>{project.description}</p>}
@@ -51,6 +53,7 @@ export function ProjectList() {
                 <StatusBadge>
                   {project.status === "active" ? "Active" : "Archived"}
                 </StatusBadge>
+                <ArrowUpRight size={16} className="project-arrow" aria-hidden="true" />
               </Link>
             </li>
           ))}

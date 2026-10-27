@@ -1,0 +1,65 @@
+{
+  "contract": "Public landing at / with an accessible navbar, blue project creation action, labeled interactive engineering example, and shared Geist typography/buttons/sidebar/header. See designDecisions for reference observations and scope.",
+  "targetViewports": [
+    "1440x1000",
+    "1024x768",
+    "390x844"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "Chrome verified keyboard ArrowRight/Home tab navigation, selected panel content, mobile menu Escape closure and focus restoration. Interactive controls have accessible names and visible focus styles. Primary white-on-blue and muted text colors meet normal-text contrast. Reduced-motion preference prevents decorative animation; no entrance animation is used."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "No horizontal overflow at all three widths. Hero stacks on mobile, navigation becomes a menu, example tabs remain readable, and shared workspaces retain responsive navigation. Geist and Geist Mono are loaded from local assets."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "not-applicable",
+      "reason": "Landing content is static with no remote data load. Locally hosted fonts use swap."
+    },
+    "empty": {
+      "status": "not-applicable",
+      "reason": "Landing content is authored product explanation; it does not query a record collection."
+    },
+    "error": {
+      "status": "not-applicable",
+      "reason": "Landing has no API request or data mutation. Existing workspace service-error handling is unchanged."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "Example project and Illustrative workflow labels separate educational content from persisted product data. No PASS, deployment, or execution result is fabricated."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "Pointer and keyboard selection render the matching requirement, acceptance, and traceability content. Navigation opens existing app routes."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "Public landing has no protected action. Project creation remains on its existing route."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "1440x1000",
+      "artifact": "landing-1440x1000.png",
+      "observation": "Desktop split hero, functional navbar, blue primary actions and labeled illustrative workflow."
+    },
+    {
+      "viewport": "1024x768",
+      "artifact": "landing-1024x768.png",
+      "observation": "Tablet layout retains both hero columns without horizontal overflow."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "landing-390x844.png",
+      "observation": "Mobile hero stacks, actions wrap and compact navbar exposes its menu."
+    }
+  ],
+  "designDecisions": {
+    "surface": "Public one-page landing plus existing workspace typography and controls",
+    "primaryAction": "Create a project; secondary action opens the existing Requirements preview",
+    "references": "Kikx Geist fonts, compact button variants, header and neutral tokens; ResumeLab navbar and split hero; Next.js product-focused page hierarchy",
+    "constraints": "Keep primary #2563EB. Navbar anchors and mobile menu work. Example content must be explicitly illustrative. No invented users, performance metrics, testimonials, or live execution results. Keep this change on the existing branch per explicit user instruction."
+  }
+}

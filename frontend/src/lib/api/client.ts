@@ -10,7 +10,7 @@ export class ApiError extends Error {
 export async function apiRequest<T>(
   path: string,
   parse: (body: unknown) => T,
-  options: { method?: "GET" | "POST"; body?: unknown } = {},
+  options: { method?: "GET" | "POST"; body?: unknown; timeoutMs?: number } = {},
 ): Promise<T> {
   const mutation = options.method === "POST";
   try {
@@ -20,7 +20,7 @@ export async function apiRequest<T>(
       body:
         options.body === undefined ? undefined : JSON.stringify(options.body),
       cache: "no-store",
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 12000),
     });
     const body: unknown = await response.json();
     if (!response.ok) {
