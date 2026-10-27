@@ -1,0 +1,31 @@
+import fs from 'node:fs/promises';
+const tab=await fetch('http://127.0.0.1:9224/json/new?about:blank',{method:'PUT'}).then(r=>r.json());
+const ws=new WebSocket(tab.webSocketDebuggerUrl); await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+let n=0;const jobs=new Map();ws.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.id){const job=jobs.get(r.id);jobs.delete(r.id);r.error?job.reject(r.error):job.resolve(r.result);}});
+const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++n;jobs.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+const evaluate=async expression=>(await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
+const projectId='4c78e1e5-8efe-4430-aada-6ade30e82164';
+const project={id:projectId,name:'Requirements UI test fixture',description:'Browser-only fixture. Not backend persistence proof.',status:'active',created_at:'2026-10-27T12:00:00Z',updated_at:'2026-10-27T12:00:00Z'};
+let status='draft'; let requests=[];
+const result=()=>({set:{id:'RSET-001',project_id:projectId,version:status==='draft'?1:status==='approved'?3:4,status,summary:'Export monthly invoices with a stable CSV schema.',assumptions:['The approved demo repository contains the billing module.'],open_questions:[]},requirements:[{id:'REQ-001',project_id:projectId,version:1,status:'draft',title:'Export monthly invoices',description:'Export invoices for the selected month as CSV with invoice ID, issue date, and total.',type:'functional',priority:'P0',trace:{ac_ids:['AC-001']}}]});
+ws.addEventListener('message',async e=>{const msg=JSON.parse(e.data);if(msg.method!=='Fetch.requestPaused')return;const p=msg.params;let body;
+if(p.request.url.includes('/api/requirements/')){requests.push({url:p.request.url,method:p.request.method});if(p.request.url.endsWith('/approve'))status='approved';if(p.request.url.endsWith('/lock'))status='locked';body=result();}
+else body=p.request.url.endsWith('/api/projects')?[project]:project;
+await call('Fetch.fulfillRequest',{requestId:p.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify(body)).toString('base64')});});
+await call('Page.enable');await call('Runtime.enable');await call('Fetch.enable',{patterns:[{urlPattern:'*/api/*'}]});
+await call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+await call('Page.navigate',{url:`http://localhost:3016/projects/${projectId}/requirements`});await new Promise(r=>setTimeout(r,1500));
+const input=async (selector,value)=>evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+const click=async text=>evaluate(`(()=>{const el=[...document.querySelectorAll('button')].find(x=>x.textContent.includes(${JSON.stringify(text)}));if(!el||el.disabled)throw new Error('Button unavailable');el.click();})()`);
+await input('#engineering-brief','Export monthly invoices');await new Promise(r=>setTimeout(r,100));await click('Analyze requirements');await new Promise(r=>setTimeout(r,500));
+if(!await evaluate("document.body.innerText.includes('Export monthly invoices')"))throw new Error('Generated result missing');
+await input('#reviewer-name','UI test reviewer');await new Promise(r=>setTimeout(r,100));await click('Approve specification');await new Promise(r=>setTimeout(r,400));
+if(!await evaluate("document.body.innerText.includes('approved')"))throw new Error('Approval state missing');
+const gate=await evaluate("[...document.querySelectorAll('button')].find(x=>x.textContent.includes('Lock version')).disabled");if(!gate)throw new Error('Lock confirmation bypassed');
+await evaluate("document.querySelector('.form-checkbox input').click()");await new Promise(r=>setTimeout(r,100));await click('Lock version');await new Promise(r=>setTimeout(r,400));
+if(!await evaluate("document.body.innerText.includes('This version is locked and read-only.')"))throw new Error('Lock not reflected');
+if(!await evaluate("document.querySelector('#engineering-brief').disabled"))throw new Error('Locked input editable');
+console.log(JSON.stringify({fixtureOnly:true,requests,confirmationGate:true,lockedReadOnly:true,font:await evaluate('getComputedStyle(document.body).fontFamily')}));
+await fs.writeFile('docs/evidence/ui/eng-016-fixture-interactions.json',JSON.stringify({fixtureOnly:true,requests,confirmationGate:true,lockedReadOnly:true},null,2));
+for(const [width,height]of [[1440,900],[390,844]]){await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});await new Promise(r=>setTimeout(r,200));if(await evaluate('document.documentElement.scrollWidth>innerWidth'))throw new Error('Horizontal overflow');const image=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await fs.writeFile(`docs/evidence/ui/eng-016-fixture-locked-${width}.png`,Buffer.from(image.data,'base64'));}
+ws.close();

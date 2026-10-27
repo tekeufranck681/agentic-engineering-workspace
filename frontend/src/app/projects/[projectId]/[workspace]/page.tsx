@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RequirementsWorkspace } from "@/features/requirements/requirements-workspace";
 import { OverviewWorkspace } from "@/features/overview/overview-workspace";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
@@ -12,6 +13,7 @@ export default async function WorkspacePage({
   const { workspace, projectId } = await params;
   const section = workspaces.find((item) => item.slug === workspace);
   if (!section) notFound();
+  if (workspace === "requirements") return <RequirementsWorkspace key={projectId} projectId={projectId} />;
   if (workspace === "overview" && projectId !== "preview")
     return <OverviewWorkspace projectId={projectId} />;
   if (workspace === "overview")

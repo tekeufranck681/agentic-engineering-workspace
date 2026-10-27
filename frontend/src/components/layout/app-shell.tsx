@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import { Code2, Menu, PanelRight, X } from "lucide-react";
+import { Code2, Menu, PanelRight, X, LayoutDashboard, FileText, Workflow, ListTodo, Activity, GitPullRequest, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -18,6 +18,7 @@ import { LoadingState } from "@/components/shared/loading-state";
 import { ErrorState } from "@/components/shared/error-state";
 import { useProject } from "@/lib/api/use-projects";
 import { workspaces } from "@/lib/workspaces";
+const workspaceIcons = [LayoutDashboard, FileText, Workflow, ListTodo, Activity, GitPullRequest];
 export function AppShell({
   projectId,
   children,
@@ -74,18 +75,20 @@ export function AppShell({
           />
         </div>
         <nav className="workspace-nav" aria-label="Project workspaces">
-          {workspaces.map((item) => (
+          {workspaces.map((item, index) => (
             <Link
               key={item.slug}
               href={`/projects/${encodeURIComponent(projectId)}/${item.slug}`}
               aria-current={active?.slug === item.slug ? "page" : undefined}
               onClick={() => setMenuOpen(false)}
             >
+              {(() => { const Icon = workspaceIcons[index]; return <Icon size={16} aria-hidden="true" />; })()}
               {item.label}
             </Link>
           ))}
         </nav>
         <div className="sidebar-footer">
+          <Link href="/projects" className="sidebar-back"><ArrowLeft size={14} aria-hidden="true" /> All projects</Link>
           <p className="preview-label">
             <span aria-hidden="true" />
             {preview

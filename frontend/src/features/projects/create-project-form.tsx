@@ -1,4 +1,5 @@
 "use client";
+import { Plus } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -93,6 +94,7 @@ export function CreateProjectForm() {
         )}
         <div className="state-actions">
           <Button type="submit" disabled={creating || error?.uncertain}>
+            <Plus size={15} aria-hidden="true" />
             {creating ? "Creating project…" : "Create project"}
           </Button>
           <Button

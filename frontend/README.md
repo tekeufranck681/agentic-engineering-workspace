@@ -69,3 +69,10 @@ Dev/build use Webpack to support the current external node_modules symlink while
 Keep compact neutral surfaces and blue primary #2563EB. References: [Geist](https://vercel.com/geist/introduction), [shadcn breadcrumbs](https://ui.shadcn.com/docs/components/radix/breadcrumb) and [Radix-backed menus](https://ui.shadcn.com/docs/components/radix/dropdown-menu). Sources/authority: ../docs/execution/audits/M1-INITIAL-AUDIT.md.
 
 Start each task branch from latest origin/main. The user creates and merges PRs manually; automation only commits/pushes task branches. Include a PR title/description and explicit blockers at handoff.
+
+ENG-016 adds the Requirements workspace and shared visual refinement. Analyze,
+read, approve and lock use the documented requirements APIs through typed services
+and a Zustand store. Draft editing and amendments remain unavailable because the
+backend exposes no such routes. See `../docs/execution/audits/M1-ENG-016-BLOCKERS.md`
+for the project-scoping issue that prevents full live review/lock acceptance.
+Visual preview: `/projects/preview/requirements` (no writes or fabricated records).
