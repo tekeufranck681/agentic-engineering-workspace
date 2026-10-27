@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 const tab=await fetch('http://127.0.0.1:9224/json/new?about:blank',{method:'PUT'}).then(r=>r.json());
 const ws=new WebSocket(tab.webSocketDebuggerUrl); await new Promise(r=>ws.addEventListener('open',r,{once:true}));
-let n=0;const jobs=new Map();ws.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.id){const job=jobs.get(r.id);jobs.delete(r.id);r.error?job.reject(r.error):job.resolve(r.result);}});
+let n=0;const jobs=new Map();ws.addEventListener('message',e=>{const r=JSON.parse(e.data);if(r.id){const job=jobs.get(r.id);jobs.delete(r.id);if(r.error)job.reject(r.error);else job.resolve(r.result);}});
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++n;jobs.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>(await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
 const projectId='4c78e1e5-8efe-4430-aada-6ade30e82164';

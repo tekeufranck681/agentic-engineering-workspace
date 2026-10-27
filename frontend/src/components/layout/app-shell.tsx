@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
-import { Code2, Menu, PanelRight, X, LayoutDashboard, FileText, Workflow, ListTodo, Activity, GitPullRequest, ArrowLeft } from "lucide-react";
+import { Code2, Menu, PanelRight, X, LayoutDashboard, FileText, Workflow, ListTodo, Activity, GitPullRequest, ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -62,7 +62,7 @@ export function AppShell({
         Skip to workspace
       </a>
       <aside className="sidebar" data-open={menuOpen} id="workspace-navigation">
-        <Link className="brand" href="/projects">
+        <Link className="brand" href="/">
           <Code2 size={18} aria-hidden="true" className="brand-symbol" />
           Engineering workspace
         </Link>
@@ -74,19 +74,23 @@ export function AppShell({
             onNavigate={() => setMenuOpen(false)}
           />
         </div>
+        <p className="workspace-nav-label">Workspace</p>
         <nav className="workspace-nav" aria-label="Project workspaces">
-          {workspaces.map((item, index) => (
+          {workspaces.map((item, index) => {
+            const Icon = workspaceIcons[index];
+            return (
             <Link
               key={item.slug}
               href={`/projects/${encodeURIComponent(projectId)}/${item.slug}`}
               aria-current={active?.slug === item.slug ? "page" : undefined}
               onClick={() => setMenuOpen(false)}
             >
-              {(() => { const Icon = workspaceIcons[index]; return <Icon size={16} aria-hidden="true" />; })()}
+              <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
               {item.label}
             </Link>
-          ))}
+          ); })}
         </nav>
+        <Button asChild variant="outline" size="sm" className="sidebar-new-project"><Link href="/projects/new"><Plus size={14} aria-hidden="true" /> New project</Link></Button>
         <div className="sidebar-footer">
           <Link href="/projects" className="sidebar-back"><ArrowLeft size={14} aria-hidden="true" /> All projects</Link>
           <p className="preview-label">
@@ -112,6 +116,7 @@ export function AppShell({
             ref={menuButton}
             variant="ghost"
             className="mobile-toggle"
+            size="icon"
             aria-label={menuOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={menuOpen}
             aria-controls="workspace-navigation"
@@ -152,6 +157,7 @@ export function AppShell({
           <Button
             ref={inspectorTrigger}
             variant="ghost"
+            size="icon"
             aria-label="Open project details"
             aria-expanded={inspectorOpen}
             disabled={!project}

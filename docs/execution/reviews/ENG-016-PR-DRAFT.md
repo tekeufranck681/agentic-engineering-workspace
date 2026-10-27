@@ -1,13 +1,13 @@
 # Title
-feat(ENG-016): requirements review UI and shared frontend refinement
+feat(ENG-016): requirements workspace, product landing, and shared UI
 
 # Description
-Adds the Requirements workspace with brief analysis, saved-set lookup, search, requirement details, approval, and explicit version-lock confirmation. Uses the existing typed client → services → Zustand → UI structure, with a bounded server-side proxy for documented requirements routes. Unknown write outcomes pause further mutations until a saved set is loaded.
+Replaces the minimal home screen with a one-page product landing: responsive navbar, working app entry links, interactive engineering example, workflow explanation, and footer. Refines the shared UI with locally hosted Geist typography, consistent button sizes and blue primary actions, compact sidebar navigation, and a new-project action. References: Kikx interface components, ResumeLab page structure, and Next.js product presentation.
 
-Refines the shared frontend with icon navigation, blue primary actions, plus icons on project creation, a framed work surface, clearer project rows and Overview sections, and corrected body font resolution. Preserves the approved blue primary and existing six-workspace navigation.
+Adds the Requirements workspace with brief analysis, saved-set lookup, search, requirement details, approval, and explicit version-lock confirmation. Uses typed services and Zustand with bounded server-side proxies and explicit handling of uncertain writes. Illustrative landing content is labeled and never enters product state.
 
-Validation: production build, lint, TypeScript, and eight tests pass. Browser checks at 1440×900, 1024×768, and 390×844 found no horizontal overflow. Browser fixtures verify analyze/approve/confirmation/lock and locked read-only behavior; these are not live backend persistence proof. Evidence: docs/evidence/ui/eng-016-*.
+Validation: production build, lint, TypeScript, and eight tests pass. Production browser checks cover desktop, tablet and mobile layout, loaded fonts, example tabs with keyboard navigation, and mobile menu Escape/focus restoration. Screenshots and evidence: docs/evidence/ui/landing-*. Earlier requirements browser fixtures verify review/lock controls, not live backend persistence.
 
-Status: partial ENG-016 delivery, not full acceptance. M4/M2 must fix zero-project UUID lookups on requirements read/approve/lock, provide project-level set discovery, and expose editing/amendment contracts. The frontend does not fabricate those operations or successful transitions. No backend changes, migrations, or new dependencies. Rollback: revert this PR.
+Partial ENG-016: M4/M2 must repair requirements project scoping and expose editing/amendment and set-discovery contracts before full acceptance. No backend changes or database migrations. No new runtime dependencies; bundled fonts include their license. Rollback: revert the PR.
 
-Base: origin/main fc93970, including merged ENG-011. Supports ENG-041 integration; full ENG-016 acceptance remains backend-blocked.
+Branch began from main fc93970. The landing and shared UI refinement were explicitly requested on this same branch. No PR was created or merged by automation.

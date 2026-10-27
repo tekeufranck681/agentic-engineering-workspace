@@ -13,16 +13,18 @@ npm run dev
 
 Set server-side BACKEND_API_URL to the reachable FastAPI origin before starting Next.js. Local example: http://127.0.0.1:8000. A deployed/container server needs a backend address reachable from that server. Never put credentials in NEXT_PUBLIC variables. The backend owner initializes its database.
 
-Current branch baseline has a backend startup defect in requirements/router.py; full normal startup is blocked until its owner repairs that merged module. See ../docs/execution/audits/M1-ENG-011-BLOCKERS.md. The isolated review harness below covers project persistence only.
+The historical ENG-011 requirements-router syntax defect was repaired before this branch. Requirements read/approve/lock still need correct project scoping; see ../docs/execution/audits/M1-ENG-016-BLOCKERS.md. The isolated review harness below covers project persistence only.
 
 ## Implemented surfaces
 
+- /: one-page product landing with responsive navigation, real app entry links, and a labeled interactive example.
 - /projects: browse saved projects with 100-row pagination, refresh and create entry.
 - /projects/new: validated project creation; duplicate names preserve entered values.
 - /projects/{id}/overview: actual project and repository metadata, next blocking action and explicitly unavailable engineering/provider summaries.
 - Project switcher preserves the selected workspace; /projects/{id} redirects to Overview.
 - /projects/preview/overview remains a labeled shell preview with no saved project record.
-- Other five workspace bodies remain placeholders for their assigned tasks.
+- /projects/{id}/requirements: analysis, saved-set lookup, search, details, approval, and lock controls using existing APIs; full acceptance remains backend-blocked.
+- Architecture, Planning, Agent Runs, and Delivery bodies remain placeholders for their assigned tasks.
 
 A repository link saves an association, not a GitHub permission check. No credentials are accepted. A missing base SHA is shown as not resolved. Same-repository branch/SHA edits are blocked because the backend currently returns the old binding unchanged. Replacing a different repository requires confirmation and retains backend history.
 
@@ -76,3 +78,7 @@ and a Zustand store. Draft editing and amendments remain unavailable because the
 backend exposes no such routes. See `../docs/execution/audits/M1-ENG-016-BLOCKERS.md`
 for the project-scoping issue that prevents full live review/lock acceptance.
 Visual preview: `/projects/preview/requirements` (no writes or fabricated records).
+
+The landing and workspace use locally hosted Geist Sans and Geist Mono (OFL license
+in src/app/fonts). Shared buttons provide default, small, large, and icon sizes.
+Landing examples are illustrative and do not represent saved data or a live run.
