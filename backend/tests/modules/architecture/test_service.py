@@ -1,5 +1,6 @@
 """Tests for the architecture service (ENG-024)."""
 
+import uuid
 import pytest
 from uuid import uuid4
 

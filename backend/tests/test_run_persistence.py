@@ -146,7 +146,7 @@ def test_tool_execution_records_digest_not_payload(store):
         duration_ms=41,
     )
     assert exec_row.capability_invocation_id == inv.id
-    assert exec_row.evidence_ref is None  # live pointer arrives with ENG-037
+    assert exec_row.evidence_ref is None  # FK-enabled pointer wired by ENG-037; see test_evidence_storage.py
 
 
 def test_rejected_extra_telemetry_is_loud(store):

@@ -18,3 +18,12 @@ class DuplicateProjectNameError(PersistenceError):
 
 class BindingNotFoundError(PersistenceError):
     """Raised when a project has no (active) repository binding."""
+
+
+class EvidenceNotFoundError(PersistenceError):
+    """Raised when an evidence id is unknown (or not a well-formed id)."""
+
+
+class EvidenceIntegrityError(PersistenceError):
+    """Raised when stored evidence bytes no longer hash to the ledger id —
+    i.e. the object was tampered with, corrupted, or is missing."""

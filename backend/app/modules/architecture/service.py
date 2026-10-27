@@ -10,7 +10,9 @@ from app.domain.base import TraceLinks
 from app.domain.adr import ArchitectureDecision
 from app.domain.contract import (
     ApiContractContent,
+    ApiEndpoint,
     DbSchemaContractContent,
+    DbTable,
     EngineeringContract,
     UmlContractContent,
 )
@@ -53,8 +55,10 @@ class LLMADRGeneration(BaseModel):
 
 class LLMContractGeneration(BaseModel):
     kind: Literal["api", "db_schema", "uml"]
-    endpoints: list[dict] = Field(default_factory=list)
-    tables: list[dict] = Field(default_factory=list)
+    # Domain types, so the model sees the required fields in the JSON Schema
+    # and a malformed answer is repaired by the capability runtime, not a 500.
+    endpoints: list[ApiEndpoint] = Field(default_factory=list)
+    tables: list[DbTable] = Field(default_factory=list)
     diagram_type: str = ""
     source: str = ""
 
@@ -69,6 +73,18 @@ class ArchitectureService:
     Uses an injected LLMPort for model calls and a RepositoryPort for ID
     allocation and artifact persistence.
     """
+
+    @staticmethod
+    def _bump_and_seal(artifact) -> None:
+        """Advance `version` and re-seal before saving a mutation.
+
+        Persistence is append-only versioned (unique on project+id+version):
+        a mutation must land as a NEW version row, never an overwrite of the
+        same version (the in-memory fake allowed overwriting; the database
+        rejects it).
+        """
+        artifact.version += 1
+        artifact.seal()
 
     def __init__(self, llm: LLMPort, repo: RepositoryPort) -> None:
         self._llm = llm
@@ -97,7 +113,7 @@ class ArchitectureService:
         for ref in rset.members:
             req = await self._repo.get_artifact(project_id, ref.id)
             if isinstance(req, Requirement):
-                req_titles.append(f"- {req.title}: {req.description}")
+                req_titles.append(f"- {req.id} {req.title}: {req.description}")
         req_text = "\n".join(req_titles)
 
         prompt = (
@@ -198,8 +214,9 @@ class ArchitectureService:
         adr.seal()
         await self._repo.save_artifact(adr)
 
-        # Link into parent doc
+        # Link into parent doc — as a new version row (append-only).
         doc.decision_ids.append(adr_id)
+        self._bump_and_seal(doc)
         await self._repo.save_artifact(doc)
         return adr
 
@@ -255,6 +272,7 @@ class ArchitectureService:
             raise ValueError(f"ArchitectureDoc {architecture_id} not found")
         assert_transition(doc.status, ArtifactStatus.accepted, ARCH_TRANSITIONS)
         doc.status = ArtifactStatus.accepted
+        self._bump_and_seal(doc)
         await self._repo.save_artifact(doc)
         return doc
 

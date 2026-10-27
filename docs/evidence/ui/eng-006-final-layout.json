@@ -1,0 +1,23 @@
+{
+  "captures": [
+    {
+      "width": 1440,
+      "height": 900,
+      "inspectorFullHeight": true,
+      "overflow": false
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "inspectorFullHeight": true,
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "inspectorFullHeight": true,
+      "overflow": false
+    }
+  ],
+  "runtimeExceptions": []
+}

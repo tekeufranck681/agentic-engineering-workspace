@@ -3,10 +3,14 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from app.core.db import get_session
 from app.domain.errors import TransitionError
-from app.domain.fakes import InMemoryRepository, FakeLLM
+from app.domain.ports import LLMPort
 from app.modules.architecture.service import ArchitectureService
+from app.modules.capabilities.api import architecture_capability
+from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
 from app.modules.architecture.schemas import (
     ArchitectureGenerateRequest,
     ArchitectureGenerateResponse,
@@ -21,14 +25,18 @@ from app.modules.architecture.schemas import (
 router = APIRouter(prefix="/architecture", tags=["architecture"])
 
 
-def get_service() -> ArchitectureService:
-    """Dependency that builds a service with in-memory repo and fake LLM.
+def get_service(
+    llm: LLMPort = Depends(architecture_capability),
+    session: Session = Depends(get_session),
+) -> ArchitectureService:
+    """Dependency: REAL persistence on the request session and the real model.
 
-    M2 replaces InMemoryRepository with a real RepositoryPort.
-    M3 replaces FakeLLM with a real LLMPort (ENG-008).
+    RepositoryPort is M2's SqlAlchemyArtifactRepository (0005 tables). The
+    LLMPort is M3's capability runtime for architecture.design_change (ENG-028
+    on the ENG-008 gateway: bounded repair, retries, timeout, receipts); tests
+    override ``architecture_capability`` and ``get_session``, or this dependency.
     """
-    llm = FakeLLM(responses={})
-    repo = InMemoryRepository()
+    repo = SqlAlchemyArtifactRepository(session)
     return ArchitectureService(llm=llm, repo=repo)
 
 

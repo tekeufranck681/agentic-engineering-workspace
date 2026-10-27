@@ -12,9 +12,10 @@ references. Design points:
   a fact belongs to the run identity, not to one version row).
 * `sequence` columns are monotonic per run, enabling SSE resume
   (``Last-Event-ID``) in ENG-032 without extra bookkeeping.
-* Evidence references are forward-compatible: pointer strings now; the
-  evidence ledger table itself is ENG-037 (migration 0004), explicitly marked
-  here so nobody assumes today's strings are the storage.
+* Evidence references point at the ENG-037 immutable ledger:
+  ``tool_executions.evidence_ref`` foreign-keys to the content-addressed
+  ``evidence_items.id`` (migration 0004). The column is nullable — runs
+  record tool calls before (or without) linking evidence.
 """
 
 import uuid
@@ -153,8 +154,9 @@ class ToolExecutionRow(Base):
     """One governed tool call inside a run (e.g. ``zetaris.run_sql``).
 
     Never stores raw payloads: ``request_digest`` is the tool-layer evidence
-    hash (sha256). ``evidence_ref`` points at the immutable evidence id once
-    ENG-037's ledger exists.
+    hash (sha256). ``evidence_ref`` points at the immutable ledger row
+    (``evidence_items.id``, the object's content hash — ENG-037, FK added by
+    migration 0004); NULL until the run links its evidence.
     """
 
     __tablename__ = "tool_executions"
@@ -168,8 +170,10 @@ class ToolExecutionRow(Base):
     tool: Mapped[str] = mapped_column(String(64), nullable=False)
     request_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    # Forward reference to ENG-037 evidence_items.id; plain string until 0004.
-    evidence_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # ENG-037 immutable evidence pointer (FK wired by migration 0004).
+    evidence_ref: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("evidence_items.id"), nullable=True
+    )
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
