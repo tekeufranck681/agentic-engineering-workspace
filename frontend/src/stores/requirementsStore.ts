@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { rememberArtifact } from "@/lib/recent-artifacts";
 import { ApiError } from "@/lib/api/client";
-import type { RequirementsResult } from "@/lib/api/requirements-contract";
+import type { Criterion, RequirementsResult } from "@/lib/api/requirements-contract";
 import { requirementsService } from "@/services/requirementsService";
 type Entry = {
     data?: RequirementsResult;
@@ -9,12 +9,34 @@ type Entry = {
     error?: string;
     uncertain?: boolean;
 };
+type CriteriaEntry = {
+    data?: Criterion[];
+    pending?: "load" | "generate";
+    error?: string;
+};
 type Store = {
     entries: Record<string, Entry>;
+    criteria: Record<string, CriteriaEntry>;
+    loadCriteria: (projectId: string, setId: string, generate?: boolean) => Promise<void>;
     execute: (projectId: string, command: "analyze" | "read" | "approve" | "lock", value: string, reviewer?: string) => Promise<void>;
 };
 export const useRequirementsStore = create<Store>((set, get) => ({
     entries: {},
+    criteria: {},
+    loadCriteria: async (projectId, setId, generate = false) => {
+        const old = get().criteria[projectId] ?? {};
+        if (old.pending)
+            return;
+        set(s => ({ criteria: { ...s.criteria, [projectId]: { ...old, pending: generate ? "generate" : "load", error: undefined } } }));
+        try {
+            const data = generate ? await requirementsService.generateCriteria(projectId, setId) : await requirementsService.criteria(projectId, setId);
+            const merged = generate ? [...(old.data ?? []), ...data] : data;
+            set(s => ({ criteria: { ...s.criteria, [projectId]: { data: merged } } }));
+        }
+        catch (e) {
+            set(s => ({ criteria: { ...s.criteria, [projectId]: { ...old, pending: undefined, error: e instanceof Error ? e.message : "Acceptance criteria request failed." } } }));
+        }
+    },
     execute: async (projectId, command, value, reviewer = "") => {
         const old = get().entries[projectId] ?? {};
         if (old.pending || (old.uncertain && command !== "read"))

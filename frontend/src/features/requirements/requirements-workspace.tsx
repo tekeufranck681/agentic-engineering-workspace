@@ -24,6 +24,8 @@ export function RequirementsWorkspace({ projectId }: {
 }) {
     const entry = useRequirementsStore(s => s.entries[projectId]);
     const execute = useRequirementsStore(s => s.execute);
+    const criteriaEntry = useRequirementsStore(s => s.criteria[projectId]);
+    const loadCriteria = useRequirementsStore(s => s.loadCriteria);
     const [brief, setBrief] = useState("");
     const [setId, setSetId] = useState("");
     const [reviewer, setReviewer] = useState("");
@@ -37,6 +39,11 @@ export function RequirementsWorkspace({ projectId }: {
     const locked = data?.set.status === "locked";
     const filtered = data?.requirements.filter(r => `${r.id} ${r.title} ${r.description}`.toLowerCase().includes(search.toLowerCase())) ?? [];
     const showComposer = !data || composing;
+    const loadedSetId = entry?.data?.set.id;
+    useEffect(() => {
+        if (loadedSetId && projectId !== "preview")
+            void loadCriteria(projectId, loadedSetId);
+    }, [loadCriteria, loadedSetId, projectId]);
     // Reopen the last saved set from the backend after a reload.
     const reopened = useRef(false);
     useEffect(() => {
@@ -106,7 +113,12 @@ export function RequirementsWorkspace({ projectId }: {
        <div className={styles.reqMeta}><code>{r.id}</code><span>{r.type}</span><span>Priority {r.priority}</span><span>v{r.version}</span></div>
        <h3 id={`${r.id}-title`}>{r.title}</h3>
        <p>{r.description}</p>
-       <div className={styles.acRow}><span>Acceptance criteria</span>{r.trace.ac_ids.length ? r.trace.ac_ids.map(id => <code key={id}>{id}</code>) : <em>None returned for this requirement</em>}</div>
+       {(criteriaEntry?.data ?? []).some(a => a.requirement_id === r.id)
+                ? <ol className={styles.criteria}>{(criteriaEntry?.data ?? []).filter(a => a.requirement_id === r.id).map(a => <li key={a.id}>
+           <div className={styles.criterionHead}><code>{a.id}</code><strong>{a.title}</strong>{a.verification && <span>{a.verification}</span>}</div>
+           <dl><div><dt>Given</dt><dd>{a.given.join("; ")}</dd></div><div><dt>When</dt><dd>{a.when.join("; ")}</dd></div><div><dt>Then</dt><dd>{a.then.join("; ")}</dd></div></dl>
+          </li>)}</ol>
+                : <div className={styles.acRow}><span>Acceptance criteria</span>{r.trace.ac_ids.length ? r.trace.ac_ids.map(id => <code key={id}>{id}</code>) : <em>None yet. Generate them from the review panel.</em>}</div>}
       </section>)}
      <p className={styles.contractNote}>{locked ? "Amendment creation is awaiting backend support. Locked content cannot be edited here." : "Draft editing is awaiting backend support. Review the generated content before approval."}</p>
     </article>
@@ -123,6 +135,10 @@ export function RequirementsWorkspace({ projectId }: {
          <Button disabled={Boolean(blocked) || !reviewer.trim() || !lockConfirmed} onClick={() => void execute(projectId, "lock", data.set.id, reviewer.trim())}>{entry?.pending === "lock" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <LockKeyhole size={15} aria-hidden="true"/>}Lock version {data.set.version}</Button>
         </> : <Button disabled={Boolean(blocked) || !reviewer.trim() || !["draft", "in_review"].includes(data.set.status)} onClick={() => void execute(projectId, "approve", data.set.id, reviewer.trim())}>{entry?.pending === "approve" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Check size={15} aria-hidden="true"/>}Approve specification</Button>}
       </div>}
+     <h3>Acceptance criteria</h3>
+     <p className={styles.criteriaNote}>{criteriaEntry?.data?.length ? `${criteriaEntry.data.length} testable criteria. Evaluation checks every task against them.` : "Runs need testable criteria to evaluate. Generate them for every requirement in this set."}</p>
+     {criteriaEntry?.error && <p className={styles.criteriaError} role="alert">{criteriaEntry.error}</p>}
+     <Button variant={criteriaEntry?.data?.length ? "outline" : "default"} disabled={preview || Boolean(criteriaEntry?.pending)} onClick={() => void loadCriteria(projectId, data.set.id, true)}>{criteriaEntry?.pending === "generate" ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Sparkles size={15} aria-hidden="true"/>}{criteriaEntry?.pending === "generate" ? "Generating criteria…" : criteriaEntry?.data?.length ? "Generate more criteria" : "Generate acceptance criteria"}</Button>
      <h3>Assumptions</h3>
      {data.set.assumptions.length ? <ul>{data.set.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul> : <p className={styles.muted}>None returned.</p>}
      <h3>Open questions</h3>
