@@ -41,6 +41,41 @@ class LLMTaskDecomposition(BaseModel):
 # Service
 # ---------------------------------------------------------------------------
 
+# Model output tolerance: sizes and dependency titles come back from the LLM in
+# varied forms. Normalize what is unambiguous; still reject what is not.
+_SIZE_ALIASES = {
+    "xs": TaskSize.xs, "extra small": TaskSize.xs, "extra-small": TaskSize.xs, "tiny": TaskSize.xs,
+    "s": TaskSize.s, "small": TaskSize.s,
+    "m": TaskSize.m, "medium": TaskSize.m,
+    # Larger estimates are capped at the largest atomic size the plan allows.
+    "l": TaskSize.m, "large": TaskSize.m, "xl": TaskSize.m,
+}
+
+
+def normalize_size(value: str) -> TaskSize:
+    """Map a model-reported size onto xs/s/m, or raise ValueError."""
+    size = _SIZE_ALIASES.get(" ".join(str(value).lower().split()))
+    if size is None:
+        raise ValueError(f"task size {value!r} is not one of xs, s, m")
+    return size
+
+
+def _title_key(title: str) -> str:
+    return " ".join("".join(c if c.isalnum() else " " for c in title.lower()).split())
+
+
+def resolve_dependency(title: str, title_to_id: dict[str, ReadableId]) -> ReadableId | None:
+    """Exact title, then case/punctuation-insensitive title, then a task id."""
+    if title in title_to_id:
+        return title_to_id[title]
+    key = _title_key(title)
+    matches = [tid for t, tid in title_to_id.items() if _title_key(t) == key]
+    if len(matches) == 1:
+        return matches[0]
+    ids = {str(tid): tid for tid in title_to_id.values()}
+    return ids.get(title.strip().upper())
+
+
 class PlanningService:
     """Decomposes architecture into executable tasks with dependencies and readiness.
 
@@ -112,7 +147,7 @@ class PlanningService:
                 title=spec.title,
                 description=spec.description,
                 target_paths=spec.target_paths,
-                size=TaskSize(spec.size),
+                size=normalize_size(spec.size),
                 depends_on=[],  # filled in pass 2
                 status=TaskStatus.pending,
                 trace=trace,
@@ -123,12 +158,15 @@ class PlanningService:
         for task, spec in zip(tasks, gen.tasks):
             deps: list[str] = []
             for dep_title in spec.depends_on_titles:
-                dep_id = title_to_id.get(dep_title)
+                dep_id = resolve_dependency(dep_title, title_to_id)
                 if dep_id is None:
                     raise ValueError(
                         f"Task {task.title!r} depends on unknown task title {dep_title!r}"
                     )
-                deps.append(dep_id)
+                # Models sometimes list a task as its own dependency or repeat
+                # one; both carry no ordering information, so drop them.
+                if dep_id != task.id and dep_id not in deps:
+                    deps.append(dep_id)
             task.depends_on = deps
             task.seal()
             await self._repo.save_artifact(task)
