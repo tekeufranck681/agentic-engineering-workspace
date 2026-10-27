@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,6 +21,21 @@ function TaskRef({ id, onSelect, known }: {
     known: boolean;
 }) {
     return known ? <button type="button" className="arch-chip" onClick={() => onSelect(id)}>{id}</button> : <span className="arch-chip" title="Not part of this plan">{id}</span>;
+}
+// Execution order: every task after the tasks it depends on (ties by ID),
+// with tasks that have no acceptance criteria last because they cannot run.
+export function executionOrder(tasks: PlanTask[]): PlanTask[] {
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    const num = (id: string) => Number(id.replace(/\D/g, "")) || 0;
+    const done = new Set<string>();
+    const out: PlanTask[] = [];
+    const pool = [...tasks].sort((a, b) => Number(a.ac_ids.length === 0) - Number(b.ac_ids.length === 0) || num(a.id) - num(b.id));
+    while (out.length < tasks.length) {
+        const next = pool.find(t => !done.has(t.id) && t.depends_on.every(d => done.has(d) || !byId.has(d))) ?? pool.find(t => !done.has(t.id))!;
+        done.add(next.id);
+        out.push(next);
+    }
+    return out;
 }
 export function PlanningWorkspace({ projectId }: {
     projectId: string;
@@ -77,7 +92,7 @@ export function PlanningWorkspace({ projectId }: {
     const preview = projectId === "preview";
     const architectureId = (arch || archId || "").trim();
     const rset = (rsetInput || (lockedSet?.status === "locked" ? lockedSet.id : "")).trim();
-    const tasks = data?.tasks ?? [];
+    const tasks = useMemo(() => executionOrder(data?.tasks ?? []), [data?.tasks]);
     const ids = new Set(tasks.map(t => t.id));
     const current = tasks.find(t => t.id === selected);
     const readiness = current ? entry?.readiness[current.id] : undefined;
@@ -85,6 +100,7 @@ export function PlanningWorkspace({ projectId }: {
     const blockersOf = (t: PlanTask) => entry?.readiness[t.id]?.blocking_reasons ?? t.blocking_reasons;
     const readinessLabel = (t: PlanTask) => { const r = entry?.readiness[t.id]; return r?.pending ? "checking" : r?.error ? "unknown" : r?.readiness ?? t.readiness ?? "not checked"; };
     const row = (t: PlanTask) => <tr key={t.id} aria-selected={current?.id === t.id} onClick={() => setSelected(t.id)}>
+   <td className="font-mono">{t.ac_ids.length ? tasks.filter(x => x.ac_ids.length).indexOf(t) + 1 : "—"}</td>
    <td><button type="button" className="task-id" onClick={() => setSelected(t.id)}>{t.id}</button></td>
    <td className="task-title-cell"><strong>{t.title}</strong></td>
    <td><StatusBadge>{t.status}</StatusBadge></td>
@@ -115,7 +131,7 @@ export function PlanningWorkspace({ projectId }: {
     <div className="section-heading arch-graph-heading"><h2 id="plan-tasks-title"><ListChecks size={15} aria-hidden="true"/>Tasks <span className="field-hint">{data ? tasks.length : "—"}</span></h2>
      <div className="segmented" role="group" aria-label="Task view"><button type="button" aria-pressed={view === "table"} onClick={() => setView("table")}><Table2 size={14} aria-hidden="true"/>Table</button><button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}><Columns3 size={14} aria-hidden="true"/>Board</button></div></div>
     {!tasks.length ? <div className="workspace-empty arch-empty"><ListChecks size={26} strokeWidth={1.4} aria-hidden="true"/><h3>{data ? "No tasks in this plan" : "Your execution plan starts here"}</h3><p>{data ? "Decompose the architecture to create tasks." : "Decompose an architecture into tasks, or load its saved plan."}</p></div>
-            : view === "table" ? <div className="task-table-wrap"><table className="task-table"><thead><tr><th>ID</th><th>Task</th><th>Status</th><th>Size</th><th>Acceptance criteria</th><th>Deps</th><th>Readiness</th><th>Owner / agent</th></tr></thead><tbody>{tasks.map(row)}</tbody></table></div>
+            : view === "table" ? <div className="task-table-wrap"><table className="task-table"><thead><tr><th>Step</th><th>ID</th><th>Task</th><th>Status</th><th>Size</th><th>Acceptance criteria</th><th>Deps</th><th>Readiness</th><th>Owner / agent</th></tr></thead><tbody>{tasks.map(row)}</tbody></table></div>
                 : <div className="task-board">{boardColumns.filter(c => c !== "cancelled" || tasks.some(t => t.status === c)).map(c => <div key={c} className="task-board-column"><h3>{c} <span className="field-hint">{tasks.filter(t => t.status === c).length}</span></h3>{tasks.filter(t => t.status === c).map(t => <button key={t.id} type="button" className="task-card" aria-pressed={current?.id === t.id} onClick={() => setSelected(t.id)}><code>{t.id}</code><strong>{t.title}</strong><span className="field-hint">{t.depends_on.length} deps · {readinessLabel(t)}</span></button>)}</div>)}</div>}
    </section>
    <aside className="arch-inspector" aria-labelledby="task-inspector-title">
