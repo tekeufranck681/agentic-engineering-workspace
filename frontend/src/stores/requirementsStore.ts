@@ -20,7 +20,7 @@ export const useRequirementsStore = create<Store>((set, get) => ({
             return;
         set(s => ({ entries: { ...s.entries, [projectId]: { ...old, pending: command, error: undefined } } }));
         try {
-            const data = command === "analyze" ? await requirementsService.analyze(projectId, value) : command === "read" ? await requirementsService.read(value) : command === "approve" ? await requirementsService.approve(value, reviewer) : await requirementsService.lock(value, reviewer);
+            const data = command === "analyze" ? await requirementsService.analyze(projectId, value) : command === "read" ? await requirementsService.read(projectId, value) : command === "approve" ? await requirementsService.approve(projectId, value, reviewer) : await requirementsService.lock(projectId, value, reviewer);
             if (data.set.project_id !== projectId || data.requirements.some(r => r.project_id !== projectId))
                 throw new ApiError(502, "The response belongs to another project. No records were displayed.", command !== "read");
             set(s => ({ entries: { ...s.entries, [projectId]: { data } } }));

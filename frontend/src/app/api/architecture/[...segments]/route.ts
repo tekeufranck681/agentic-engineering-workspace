@@ -13,6 +13,9 @@ async function proxy(request: Request, context: {
     const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
     if (!read && !generate)
         return fail("Unsupported architecture action.", 400);
+    const projectId = new URL(request.url).searchParams.get("project_id") ?? "";
+    if (read && !/^[0-9a-f-]{36}$/i.test(projectId))
+        return fail("A valid project is required to open an architecture.", 422);
     const base = process.env.BACKEND_API_URL;
     if (!base)
         return fail("Architecture service is not configured. Contact the workspace operator.", 503);
@@ -35,6 +38,8 @@ async function proxy(request: Request, context: {
         const url = new URL(base.replace(/\/$/, "") + "/architecture/" + path);
         if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
             return fail("Architecture service URL is invalid.", 503);
+        if (read)
+            url.searchParams.set("project_id", projectId);
         sent = true;
         const response = await fetch(url, { method: request.method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(generate ? 180000 : 8000) });
         if (!response.ok) {
