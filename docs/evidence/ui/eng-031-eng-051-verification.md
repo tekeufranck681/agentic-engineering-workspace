@@ -44,3 +44,15 @@ References used:
 
 ## Contract gap (M4/M5)
 The locked event names in the MVP lock (§59: `RUN_STARTED`, `EVALUATION_FAILED`, …) differ from what the backend emits (`run.loaded`, `evaluation.completed`, `diagnosis.completed`, `delivery.*`, `run.finished`). The UI renders the backend's actual events and shows unknown types by their raw name. The two lists need reconciling.
+
+## Requirements reimagined (ENG-016 follow-up)
+- **No set loaded:** a writing surface for the brief, with guidance on what a good brief covers and a way to open a saved set.
+- **Set loaded:** three panes.
+  - **Index:** search, with anchors into the document.
+  - **Specification document:** set summary, then each requirement with its type, priority, version and acceptance-criteria IDs, at a 68ch measure.
+  - **Review rail:** the next step, reviewer name, approve or (after server approval) confirm-and-lock, plus assumptions and open questions.
+- **Lifecycle:** `Draft → Approved → Locked` is driven only by the server's set status. Store, service and transitions are unchanged.
+- **Verified** at 1440×900, 1024×768 and 390×844 against `eng-016-requirements-fixture-backend.py`:
+  - Opening RSET-001 shows Draft.
+  - Approve moves it to Approved only after the server responds, and then shows "Lock version 2".
+  - No overflow and no page errors.
