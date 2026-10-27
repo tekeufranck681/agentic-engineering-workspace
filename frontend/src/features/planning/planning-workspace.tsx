@@ -4,6 +4,7 @@ import { recallArtifact } from "@/lib/recent-artifacts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { planningService } from "@/services/planningService";
+import { ApiError } from "@/lib/api/client";
 import { runsService } from "@/services/runsService";
 import { AlertCircle, ArrowRight, Columns3, FolderOpen, ListChecks, LoaderCircle, Play, ShieldCheck, Sparkles, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,8 +45,13 @@ export function PlanningWorkspace({ projectId }: {
         setStarting(true);
         setStartError(undefined);
         try {
+            // A task already marked ready by an earlier attempt is fine: starting
+            // the run re-validates readiness on the server.
             if (task.status === "pending")
-                await planningService.markReady(projectId, task.id);
+                await planningService.markReady(projectId, task.id).catch((e: unknown) => {
+                    if (!(e instanceof ApiError && e.status === 409))
+                        throw e;
+                });
             const { run_id } = await runsService.start(projectId, task.id);
             await runsService.execute(projectId, run_id);
             router.push(`/projects/${projectId}/runs`);
@@ -124,10 +130,11 @@ export function PlanningWorkspace({ projectId }: {
       <h4>Blockers</h4>
       {readiness?.error ? <p className="field-hint" role="alert">{readiness.error}</p> : blockersOf(current).length ? <ul className="task-blockers">{blockersOf(current).map((reason, i) => { const ref = reason.match(/TASK-\d+/)?.[0]; return <li key={i}><AlertCircle size={13} aria-hidden="true"/><span>{reason}</span>{ref && <TaskRef id={ref} known={ids.has(ref)} onSelect={setSelected}/>}</li>; })}</ul> : <p className="field-hint">{readiness && !readiness.pending ? "No blockers reported." : "Readiness has not been checked."}</p>}
       <h4>Validation plan</h4><p className="field-hint">The task contract does not include a validation plan yet. Acceptance criteria above define what must pass.</p>
-      {startError && <p className="field-hint" role="alert">{startError}</p>}
+      {startError && <div className="requirements-error" role="alert"><AlertCircle size={16} aria-hidden="true"/><div><strong>The run did not start</strong><p>{startError}</p></div></div>}
+      {current.ac_ids.length === 0 && <div className="requirements-error" role="note"><AlertCircle size={16} aria-hidden="true"/><div><strong>No acceptance criteria</strong><p>Evaluation has nothing to check this task against. Generate criteria in Requirements, then decompose again; the new tasks will carry them.</p></div></div>}
       <div className="state-actions task-actions">
        <Button variant="outline" disabled={preview || readiness?.pending} onClick={() => void checkReadiness(projectId, current.id)}>{readiness?.pending ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <ShieldCheck size={15} aria-hidden="true"/>}Check readiness</Button>
-       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title="Run is enabled after the backend confirms readiness"><Play size={15} aria-hidden="true"/>Run task</Button>}
+       {readiness?.readiness === "ready" && !readiness.pending && !readiness.error && current.ac_ids.length > 0 ? <Button disabled={starting} onClick={() => void runTask(current)}>{starting ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true"/> : <Play size={15} aria-hidden="true"/>}{starting ? "Starting run…" : "Run task"}</Button> : <Button disabled title={current.ac_ids.length === 0 ? "This task has no acceptance criteria to evaluate" : "Run is enabled after the backend confirms readiness"}><Play size={15} aria-hidden="true"/>Run task</Button>}
       </div>
      </>}
     </div>
