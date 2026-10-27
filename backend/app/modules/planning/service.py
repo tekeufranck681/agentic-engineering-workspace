@@ -4,7 +4,9 @@ import uuid
 
 from pydantic import BaseModel, Field
 
+from app.domain.acceptance_criterion import AcceptanceCriterion
 from app.domain.architecture import ArchitectureDoc
+from app.domain.requirements import Requirement
 from app.domain.base import TraceLinks
 from app.domain.enums import (
     ArtifactKind,
@@ -120,12 +122,28 @@ class PlanningService:
             f"- {c.name}: {c.responsibility} (deps: {', '.join(c.depends_on) or 'none'})"
             for c in doc.components
         )
+        # Requirements and their acceptance criteria, so every task can name the
+        # criteria evaluation will check it against.
+        requirements = [r for r in await self._repo.list_artifacts(project_id, ArtifactKind.requirement) if isinstance(r, Requirement)]
+        criteria = [a for a in await self._repo.list_artifacts(project_id, ArtifactKind.acceptance_criterion) if isinstance(a, AcceptanceCriterion)]
+        ac_by_req: dict[str, list[str]] = {}
+        for ac in criteria:
+            ac_by_req.setdefault(ac.requirement_id, []).append(str(ac.id))
+        req_text = "\n".join(
+            f"- {r.id}: {r.title} (acceptance criteria: "
+            + ("; ".join(f"{a.id} {a.title}" for a in criteria if a.requirement_id == str(r.id)) or "none")
+            + ")"
+            for r in requirements
+        )
         prompt = (
             "You are a tech lead. Break the architecture below into concrete, "
             "executable engineering tasks. For each task provide: title, description, "
             "target file paths, size (xs/s/m), which other task titles it depends on, "
-            "and which requirement IDs it satisfies.\n\n"
-            f"Architecture: {doc.summary}\nComponents:\n{comp_text}\n\nContext:\n{context}"
+            "which requirement IDs it satisfies, and which acceptance criterion IDs "
+            "(from the list below) verify it. Every task should cover at least one "
+            "acceptance criterion.\n\n"
+            f"Architecture: {doc.summary}\nComponents:\n{comp_text}\n\n"
+            f"Requirements:\n{req_text or '- none'}\n\nContext:\n{context}"
         )
         gen: LLMTaskDecomposition = await self._llm.generate_structured(
             prompt, LLMTaskDecomposition
@@ -137,10 +155,14 @@ class PlanningService:
         for spec in gen.tasks:
             task_id = await self._repo.next_id(project_id, ArtifactKind.task)
             title_to_id[spec.title] = task_id
-            trace = TraceLinks(
-                requirement_ids=spec.requirement_ids,
-                ac_ids=spec.ac_ids,
-            )
+            # Validate IDs only against registries that exist for the project.
+            known_reqs = {str(r.id) for r in requirements}
+            known_acs = {a for ids in ac_by_req.values() for a in ids}
+            req_ids = [r for r in spec.requirement_ids if r in known_reqs] if known_reqs else list(spec.requirement_ids)
+            ac_ids = [a for a in spec.ac_ids if a in known_acs] if known_acs else list(spec.ac_ids)
+            if not ac_ids:  # inherit the criteria of the requirements it serves
+                ac_ids = [a for r in req_ids for a in ac_by_req.get(r, [])]
+            trace = TraceLinks(requirement_ids=req_ids, ac_ids=ac_ids)
             task = Task(
                 id=task_id,
                 project_id=project_id,

@@ -1,5 +1,6 @@
 """Business logic for requirements analysis and acceptance criteria (ENG-014/019)."""
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -194,6 +195,51 @@ class RequirementsService:
         return stories
 
     # -- acceptance criteria generation ----------------------------------------
+
+    async def generate_criteria_for_set(
+        self, project_id: uuid.UUID, set_id: ReadableId, context: str = ""
+    ) -> list[AcceptanceCriterion]:
+        """Generate testable criteria for every requirement in a set.
+
+        Model calls run concurrently; criteria are saved in requirement order.
+        A requirement whose generation fails is skipped; if all fail, raises.
+        """
+        _, requirements = await self.get_requirements_set(project_id, set_id)
+        prompts = [
+            "You are a QA engineer. For the requirement below, generate testable "
+            "acceptance criteria in Given/When/Then format. Include a verification kind.\n\n"
+            f"Requirement {r.id}: {r.title}\n{r.description}\n\nContext:\n{context}"
+            for r in requirements
+        ]
+        results = await asyncio.gather(
+            *(self._llm.generate_structured(p, LLMACGeneration) for p in prompts), return_exceptions=True
+        )
+        if requirements and all(isinstance(r, BaseException) for r in results):
+            raise results[0]
+        criteria: list[AcceptanceCriterion] = []
+        for req, gen in zip(requirements, results):
+            if isinstance(gen, BaseException):
+                continue
+            for spec in gen.acceptance_criteria:
+                ac = AcceptanceCriterion(
+                    id=await self._repo.next_id(project_id, ArtifactKind.acceptance_criterion),
+                    project_id=project_id, requirement_id=str(req.id), title=spec.title,
+                    given=spec.given, when=spec.when, then=spec.then,
+                    verification=Verification(kind=VerificationKind(spec.verification_kind), hint=spec.verification_hint),
+                    priority=Priority(spec.priority), status=ArtifactStatus.draft,
+                    trace=TraceLinks(requirement_ids=[str(req.id)], ac_ids=[]),
+                )
+                ac.seal()
+                await self._repo.save_artifact(ac)
+                criteria.append(ac)
+        return criteria
+
+    async def list_criteria_for_set(self, project_id: uuid.UUID, set_id: ReadableId) -> list[AcceptanceCriterion]:
+        """Criteria (latest versions) traced to the set's requirements."""
+        _, requirements = await self.get_requirements_set(project_id, set_id)
+        ids = {str(r.id) for r in requirements}
+        found = await self._repo.list_artifacts(project_id, ArtifactKind.acceptance_criterion)
+        return sorted((a for a in found if isinstance(a, AcceptanceCriterion) and a.requirement_id in ids), key=lambda a: str(a.id))
 
     async def generate_acceptance_criteria(
         self,

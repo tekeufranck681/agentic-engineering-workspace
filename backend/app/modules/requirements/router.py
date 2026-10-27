@@ -3,9 +3,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.db import get_session
+from app.domain.acceptance_criterion import AcceptanceCriterion
 from app.domain.errors import TransitionError
 from app.domain.ports import LLMPort
 from app.modules.capabilities.api import requirements_capability
@@ -135,5 +137,36 @@ async def get_requirements_set(
     try:
         rset, requirements = await svc.get_requirements_set(project_id, set_id)
         return RequirementsSetResponse(set=rset, requirements=requirements)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class _CriteriaRequest(BaseModel):
+    project_id: uuid.UUID
+    context: str = Field(default="", max_length=20000)
+
+
+class _CriteriaResponse(BaseModel):
+    acceptance_criteria: list[AcceptanceCriterion]
+
+
+@router.post("/set/{set_id}/acceptance-criteria", response_model=_CriteriaResponse)
+async def generate_set_criteria(
+    set_id: str, payload: _CriteriaRequest, svc: RequirementsService = Depends(get_service)
+) -> _CriteriaResponse:
+    """Generate acceptance criteria for every requirement in the set."""
+    try:
+        return _CriteriaResponse(acceptance_criteria=await svc.generate_criteria_for_set(payload.project_id, set_id, payload.context))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/set/{set_id}/acceptance-criteria", response_model=_CriteriaResponse)
+async def list_set_criteria(
+    set_id: str, project_id: uuid.UUID, svc: RequirementsService = Depends(get_service)
+) -> _CriteriaResponse:
+    """Acceptance criteria traced to the set's requirements."""
+    try:
+        return _CriteriaResponse(acceptance_criteria=await svc.list_criteria_for_set(project_id, set_id))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
