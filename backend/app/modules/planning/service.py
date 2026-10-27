@@ -170,12 +170,9 @@ class PlanningService:
                     f"dependency {dep_id} ({dep.title}) is {dep.status}"
                 )
 
+        # Readiness is derived on demand and excluded from the content hash, so
+        # it is returned rather than persisted as a new task version.
         readiness = "ready" if not blocking else "blocked"
-        if (task.readiness, task.blocking_reasons) != (readiness, blocking):
-            task.readiness = readiness
-            task.blocking_reasons = blocking
-            self._bump_and_seal(task)
-            await self._repo.save_artifact(task)
         return readiness, blocking
 
     # -- status transitions -----------------------------------------------------------
