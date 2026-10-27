@@ -3,9 +3,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from app.core.db import get_session
 from app.domain.errors import TransitionError
-from app.domain.fakes import InMemoryRepository, FakeLLM
+from app.domain.ports import LLMPort
+from app.modules.capabilities.api import planning_capability
+from app.modules.persistence.requirements_repository import SqlAlchemyArtifactRepository
 from app.modules.planning.service import PlanningService
 from app.modules.planning.schemas import (
     TaskDecomposeRequest,
@@ -20,15 +24,17 @@ from app.modules.planning.schemas import (
 router = APIRouter(prefix="/planning", tags=["planning"])
 
 
-def get_service() -> PlanningService:
-    """Dependency that builds a service with in-memory repo and fake LLM.
+def get_service(
+    llm: LLMPort = Depends(planning_capability),
+    session: Session = Depends(get_session),
+) -> PlanningService:
+    """Dependency: real persistence on the request session and the real model.
 
-    M2 replaces InMemoryRepository with a real RepositoryPort.
-    M3 replaces FakeLLM with a real LLMPort (ENG-008).
+    Same wiring as the architecture router: M2's SqlAlchemyArtifactRepository
+    and M3's capability runtime for planning.plan_change. Tests override
+    ``planning_capability`` and ``get_session``, or this dependency.
     """
-    llm = FakeLLM(responses={})
-    repo = InMemoryRepository()
-    return PlanningService(llm=llm, repo=repo)
+    return PlanningService(llm=llm, repo=SqlAlchemyArtifactRepository(session))
 
 
 @router.post("/decompose", response_model=TaskDecomposeResponse)
