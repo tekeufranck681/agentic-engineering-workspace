@@ -48,6 +48,17 @@ class PlanningService:
     allocation and artifact persistence.
     """
 
+    @staticmethod
+    def _bump_and_seal(artifact) -> None:
+        """Advance `version` and re-seal before saving a mutation.
+
+        Persistence is append-only versioned (unique on project+id+version), so
+        a mutation must land as a NEW version row, as in the architecture and
+        requirements services.
+        """
+        artifact.version += 1
+        artifact.seal()
+
     def __init__(self, llm: LLMPort, repo: RepositoryPort) -> None:
         self._llm = llm
         self._repo = repo
@@ -160,9 +171,11 @@ class PlanningService:
                 )
 
         readiness = "ready" if not blocking else "blocked"
-        task.readiness = readiness
-        task.blocking_reasons = blocking
-        await self._repo.save_artifact(task)
+        if (task.readiness, task.blocking_reasons) != (readiness, blocking):
+            task.readiness = readiness
+            task.blocking_reasons = blocking
+            self._bump_and_seal(task)
+            await self._repo.save_artifact(task)
         return readiness, blocking
 
     # -- status transitions -----------------------------------------------------------
@@ -177,6 +190,7 @@ class PlanningService:
         target = TaskStatus(target_status)
         assert_transition(task.status, target, TASK_TRANSITIONS)
         task.status = target
+        self._bump_and_seal(task)
         await self._repo.save_artifact(task)
         return task
 

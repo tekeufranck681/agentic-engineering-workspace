@@ -86,3 +86,7 @@ async def test_plan_readiness_and_runs_survive_across_requests(api, project, ses
     assert listed.status_code == 200
     assert [r["id"] for r in listed.json()["runs"]] == [run_id]
     assert api.get(f"/runs/{run_id}", params={"project_id": pid}).json()["run"]["task_id"] == "TASK-001"
+
+    moved = api.post(f"/runs/{run_id}/transition", json={"project_id": pid, "target_status": "running"})
+    assert moved.status_code == 200, moved.text
+    assert api.get(f"/runs/{run_id}", params={"project_id": pid}).json()["run"]["status"] == "running"
