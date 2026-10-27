@@ -1,4 +1,4 @@
-import { parseRequirements } from "@/lib/api/requirements-contract";
+import { parseCriteria, parseRequirements } from "@/lib/api/requirements-contract";
 export const dynamic = "force-dynamic";
 async function proxy(request: Request, context: {
     params: Promise<{
@@ -7,6 +7,8 @@ async function proxy(request: Request, context: {
 }) {
     const { segments } = await context.params;
     const path = segments.join("/");
+    if (/^set\/RSET-\d+\/acceptance-criteria$/.test(path))
+        return criteria(request, path);
     const read = request.method === "GET" && /^set\/RSET-\d+$/.test(path);
     const analyze = request.method === "POST" && path === "analyze";
     const transition = request.method === "POST" && /^set\/RSET-\d+\/(approve|lock)$/.test(path);
@@ -62,3 +64,39 @@ async function proxy(request: Request, context: {
     }
 }
 export { proxy as GET, proxy as POST };
+
+// Acceptance criteria for a set: GET lists them, POST generates them (one
+// model call per requirement, so it gets a long timeout).
+async function criteria(request: Request, path: string) {
+    const headers = { "Cache-Control": "no-store" };
+    const fail = (message: string, status: number, uncertain = false) => Response.json({ message, uncertain }, { status, headers });
+    const base = process.env.BACKEND_API_URL;
+    if (!base)
+        return fail("Requirements service is not configured. Contact the workspace operator.", 503);
+    const generate = request.method === "POST";
+    let projectId = new URL(request.url).searchParams.get("project_id") ?? "";
+    if (generate) {
+        try {
+            projectId = (await request.json()).project_id;
+        }
+        catch {
+            return fail("Invalid request body.", 400);
+        }
+    }
+    if (typeof projectId !== "string" || !/^[0-9a-f-]{36}$/i.test(projectId))
+        return fail("A valid project is required.", 422);
+    const url = new URL(base.replace(/\/$/, "") + "/requirements/" + path);
+    if (!generate)
+        url.searchParams.set("project_id", projectId);
+    try {
+        const response = await fetch(url, { method: request.method, headers: { "Content-Type": "application/json" }, body: generate ? JSON.stringify({ project_id: projectId }) : undefined, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(generate ? 300000 : 8000) });
+        if (!response.ok) {
+            const detail = await response.json().then((b: { detail?: unknown }) => (typeof b?.detail === "string" ? b.detail.slice(0, 300) : ""), () => "");
+            return fail(detail || (response.status === 503 ? "The model runtime is unavailable." : "Acceptance criteria could not be loaded."), response.status >= 500 ? 502 : response.status, generate && response.status >= 500);
+        }
+        return Response.json({ acceptance_criteria: parseCriteria(await response.json()) }, { headers });
+    }
+    catch {
+        return fail(generate ? "Generation could not be confirmed. Reload the criteria before generating again." : "Could not load acceptance criteria.", 502, generate);
+    }
+}
