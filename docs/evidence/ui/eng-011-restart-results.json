@@ -1,0 +1,7 @@
+{
+  "routerRestarted": true,
+  "projectSurvives": true,
+  "bindingSurvives": true,
+  "replacementHistorySurvives": true,
+  "scope": "Disposable SQLite; actual persistence router only"
+}

@@ -1,0 +1,35 @@
+{
+  "scope": "Actual unmodified persistence router mounted in isolation; full app blocked by requirements router SyntaxError",
+  "projectId": "e58c6587-802f-424f-ad15-112a7be5ccfa",
+  "createPersists": true,
+  "createDoubleSubmitSingleRequest": true,
+  "duplicateName": 409,
+  "fieldsPreservedOnError": true,
+  "repositoryLinkPersists": true,
+  "replacementHistory": 2,
+  "replacementDoubleSubmitSingleRequest": true,
+  "sameRepositoryEditRejected": true,
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "projectReadDeduplicated": true
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "overflow": false,
+      "projectReadDeduplicated": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "overflow": false,
+      "projectReadDeduplicated": true
+    }
+  ],
+  "unavailableSummariesHonest": true,
+  "unknownMutationOutcomeBlocksRetry": true,
+  "runtimeExceptions": []
+}

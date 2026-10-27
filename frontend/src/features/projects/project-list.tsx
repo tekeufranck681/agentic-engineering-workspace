@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useProjectsStore } from "@/stores/projectsStore";
 import { useProjects } from "@/lib/api/use-projects";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/shared/loading-state";
@@ -11,10 +12,25 @@ import { StatusBadge } from "@/components/shared/status-badge";
 export function ProjectList() {
   const [offset, setOffset] = useState(0);
   const query = useProjects(offset);
+  const clearCreateError = useProjectsStore((state) => state.clearCreateError);
   return (
     <main className="projects-page">
       <div className="page-heading">
         <h1>Projects</h1>
+        <div className="projects-actions">
+          <Button
+            variant="outline"
+            onClick={query.retry}
+            disabled={query.loading}
+          >
+            Refresh
+          </Button>
+          <Button asChild>
+            <Link href="/projects/new" onClick={clearCreateError}>
+              Create project
+            </Link>
+          </Button>
+        </div>
       </div>
       <p className="page-description">
         Open a project to continue its engineering workflow.
@@ -51,7 +67,7 @@ export function ProjectList() {
           <p>
             {offset
               ? "Return to the previous page to choose a project."
-              : "No saved projects were returned. Ask the workspace operator to create one, then refresh this list."}
+              : "No saved projects were returned. Create a project to start organizing its requirements and repository."}
           </p>
         </EmptyState>
       )}
