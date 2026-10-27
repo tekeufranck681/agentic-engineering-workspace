@@ -27,3 +27,6 @@ evidence/raw/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Local evidence objects and scratch databases (ENG-037 default root: var/evidence)
+var/
