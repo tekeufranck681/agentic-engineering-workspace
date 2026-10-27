@@ -24,6 +24,10 @@ from app.modules.architecture.schemas import (
 
 router = APIRouter(prefix="/architecture", tags=["architecture"])
 
+# Callers that predate project scoping on reads/accept resolve against the nil
+# project; real clients pass the artifact's project_id.
+LEGACY_PROJECT_ID = uuid.UUID(int=0)
+
 
 def get_service(
     llm: LLMPort = Depends(architecture_capability),
@@ -94,8 +98,8 @@ async def accept_architecture(
 ) -> ArchitectureResponse:
     """Accept (approve) an architecture document."""
     try:
-        doc = await svc.accept_architecture(uuid.UUID(int=0), arch_id)
-        fresh_doc, decisions = await svc.get_architecture(uuid.UUID(int=0), arch_id)
+        doc = await svc.accept_architecture(payload.project_id, arch_id)
+        fresh_doc, decisions = await svc.get_architecture(payload.project_id, arch_id)
         return ArchitectureResponse(
             architecture=fresh_doc, decisions=decisions, contracts=[]
         )
@@ -108,11 +112,12 @@ async def accept_architecture(
 @router.get("/{arch_id}", response_model=ArchitectureResponse)
 async def get_architecture(
     arch_id: str,
+    project_id: uuid.UUID = LEGACY_PROJECT_ID,
     svc: ArchitectureService = Depends(get_service),
 ) -> ArchitectureResponse:
     """Retrieve an architecture document with its linked ADRs."""
     try:
-        doc, decisions = await svc.get_architecture(uuid.UUID(int=0), arch_id)
+        doc, decisions = await svc.get_architecture(project_id, arch_id)
         return ArchitectureResponse(architecture=doc, decisions=decisions, contracts=[])
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

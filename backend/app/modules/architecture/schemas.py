@@ -57,6 +57,9 @@ class ArchitectureAcceptRequest(BaseModel):
     """Input to accept (approve) an architecture document."""
 
     accepted_by: str = Field(min_length=1, max_length=200)
+    project_id: uuid.UUID = Field(
+        default=uuid.UUID(int=0), description="Project that owns the architecture"
+    )
 
 
 class ArchitectureResponse(BaseModel):

@@ -313,3 +313,25 @@ def test_every_content_hash_column_fits_a_domain_hash():
     assert len(columns) >= 9
     for column in columns:
         assert column.type.length >= needed, f"{column.table.name}.content_hash is VARCHAR({column.type.length})"
+
+
+def test_read_and_accept_are_scoped_to_the_real_project(full_client, session: Session):
+    """Regression: GET/accept resolved every id against the nil project (404)."""
+    project = Project(name="real-arch", description=None)
+    session.add(project)
+    session.commit()
+    pid = str(project.id)
+    assert full_client.post("/requirements/analyze", json={"project_id": pid, "brief": "Billing"}).status_code == 200
+    assert full_client.post("/requirements/set/RSET-001/approve", json={"approved_by": "m1", "project_id": pid}).status_code == 200
+    assert full_client.post("/requirements/set/RSET-001/lock", json={"locked_by": "m1", "project_id": pid}).status_code == 200
+    gen = full_client.post("/architecture/generate", json={"project_id": pid, "requirements_set_id": "RSET-001"})
+    assert gen.status_code == 200, gen.text
+    arch_id = gen.json()["architecture"]["id"]
+
+    got = full_client.get(f"/architecture/{arch_id}", params={"project_id": pid})
+    assert got.status_code == 200, got.text
+    assert got.json()["architecture"]["project_id"] == pid
+
+    acc = full_client.post(f"/architecture/{arch_id}/accept", json={"accepted_by": "m1", "project_id": pid})
+    assert acc.status_code == 200, acc.text
+    assert acc.json()["architecture"]["status"] == "accepted"
