@@ -31,6 +31,8 @@ evaluated change is the diff evidence on top of it.
 
 import hashlib
 import json
+import logging
+import re
 
 from app.domain.acceptance_criterion import AcceptanceCriterion
 from app.domain.task import Task
@@ -112,6 +114,27 @@ def _suite_blocker(suite: TestRunResult | None, error: str | None, failed_checks
 
 def _verdict(ac: AcceptanceCriterion, verdict: str, reason: str, evidence: list[str]) -> ACVerdict:
     return ACVerdict(acceptance_criterion_id=ac.id, verdict=verdict, reason=_clip(reason), evidence_ids=evidence)
+
+
+logger = logging.getLogger(__name__)
+_AC_ID = re.compile(r"[A-Za-z]{2,5}-\d+")
+
+
+def index_findings(findings: list[ReviewFinding], ac_ids: list[str]) -> dict[str, ReviewFinding]:
+    """Findings by criterion id, tolerating how models echo ids ("AC-001 v1", "ac-001@v2")."""
+    wanted = {i.upper(): i for i in ac_ids}
+    indexed: dict[str, ReviewFinding] = {}
+    unmatched: list[str] = []
+    for finding in findings:
+        match = _AC_ID.search(finding.acceptance_criterion_id or "")
+        ac_id = wanted.get(match.group(0).upper()) if match else None
+        if ac_id is None:
+            unmatched.append(finding.acceptance_criterion_id)
+        elif ac_id not in indexed:
+            indexed[ac_id] = finding
+    if unmatched:
+        logger.warning("review findings matched no criterion: %s (expected %s)", unmatched, ac_ids)
+    return indexed
 
 
 def _reviewed(ac: AcceptanceCriterion, check: ACVerdict, finding: ReviewFinding | None,
@@ -348,5 +371,5 @@ class IndependentACEvaluator:
             return {}, None, exc.kind
         self.run_store.record_capability_invocation(run_id, EVALUATION_EVALUATE, step_row_id=step.id,
                                                     **_telemetry(result.receipt))
-        findings = {f.acceptance_criterion_id: f for f in result.value.findings}
+        findings = index_findings(result.value.findings, [ac.id for ac, _ in passed])
         return findings, f"capability_invocation:{result.receipt.invocation_id}", None

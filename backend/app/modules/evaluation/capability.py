@@ -30,7 +30,9 @@ class ReviewFinding(BaseModel):
 
 
 class EvaluationReview(BaseModel):
-    findings: list[ReviewFinding] = Field(default_factory=list)
+    # At least one finding: an empty answer is unusable, so the runtime's
+    # repair loop asks again instead of every criterion staying UNVERIFIED.
+    findings: list[ReviewFinding] = Field(min_length=1)
 
 
 def _bounded(text: str, limit: int) -> str:
@@ -55,5 +57,6 @@ def build_review_prompt(task: Task, passed: list[tuple[AcceptanceCriterion, list
     base = (diff.base_sha or "unknown")[:12]
     lines += ["", f"Change under evaluation (git diff against base commit {base}):",
               _bounded(diff.patch, MAX_DIFF_CHARS) if diff.patch.strip() else "(no change)",
-              "", "Return one finding per criterion listed above."]
+              "", "Return one finding per criterion listed above. Use the bare criterion id "
+              "(for example AC-001) as acceptance_criterion_id."]
     return "\n".join(lines)
