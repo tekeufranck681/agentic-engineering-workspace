@@ -10,6 +10,7 @@ order and stay stable across approval. ``approve`` refuses a plan whose pinned
 inputs changed since it was made.
 """
 
+import asyncio
 import uuid
 
 from pydantic import BaseModel, Field, ValidationError
@@ -48,6 +49,10 @@ class LLMValidationCase(BaseModel):
 class LLMValidationPlan(BaseModel):
     cases: list[LLMValidationCase]
     notes: list[str] = Field(default_factory=list)
+
+
+PLAN_BATCH_SIZE = 3
+"""Criteria per model call when generating a plan."""
 
 
 class ValidationPlanService:
@@ -97,10 +102,38 @@ class ValidationPlanService:
                 raise ValidationPlanNotFoundError(f"no contract {contract_id}")
             contracts.append(contract)
 
-        answer = await self._llm.generate_structured(
-            _prompt(requirements, criteria, contracts, required_levels, context), LLMValidationPlan
+        # One model call per small batch of criteria, run concurrently: a single
+        # answer for a whole set grows past what the model returns as valid JSON.
+        batches = [criteria[i:i + PLAN_BATCH_SIZE] for i in range(0, len(criteria), PLAN_BATCH_SIZE)]
+        answers = await asyncio.gather(
+            *(
+                self._llm.generate_structured(
+                    _prompt(
+                        [r for r in requirements if r is not None and str(r.id) in {c.requirement_id for c in batch}],
+                        batch, contracts, required_levels, context,
+                    ),
+                    LLMValidationPlan,
+                )
+                for batch in batches
+            ),
+            return_exceptions=True,
         )
-        cases, notes = _cases(answer, {str(c.id): c for c in criteria})
+        if all(isinstance(a, BaseException) for a in answers):
+            raise answers[0]
+        cases, notes, model_notes = [], [], []
+        for batch, answer in zip(batches, answers):
+            if isinstance(answer, BaseException):
+                notes.append(
+                    f"no test cases generated for {', '.join(str(c.id) for c in batch)}: {type(answer).__name__}"
+                )
+                continue
+            batch_cases, batch_notes = _cases(answer, {str(c.id): c for c in batch})
+            cases += batch_cases
+            notes += batch_notes
+            model_notes += answer.notes
+        # Test ids are numbered per answer; renumber across the merged plan.
+        cases = [case.model_copy(update={"test_id": f"TEST-{i:03d}"}) for i, case in enumerate(cases, start=1)]
+        answer = LLMValidationPlan(cases=[], notes=model_notes)
         refs = {
             "requirements_set": _ref(requirements_set),
             "acs": [_ref(c) for c in criteria],
