@@ -314,3 +314,12 @@ def test_the_0007_migration_creates_the_table(tmp_path, monkeypatch):
     command.downgrade(config, "0006")
     assert "validation_plans" not in inspect(engine).get_table_names()
     engine.dispose()
+
+
+def test_llm_case_accepts_level_spellings_and_versioned_ids():
+    from app.modules.validation.plan import LLMValidationCase
+
+    case = LLMValidationCase.model_validate({"ac_id": "ac-001@v2", "level": "Atomic", "title": "t"})
+    assert (case.ac_id, case.level.value) == ("AC-001", "L0")
+    assert LLMValidationCase.model_validate({"ac_id": "AC-002", "level": "unit test", "title": "t"}).level.value == "L0"
+    assert LLMValidationCase.model_validate({"ac_id": "AC-003", "level": "L2", "title": "t"}).level.value == "L2"

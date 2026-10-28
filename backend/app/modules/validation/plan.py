@@ -11,9 +11,10 @@ inputs changed since it was made.
 """
 
 import asyncio
+import re
 import uuid
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.domain.acceptance_criterion import AcceptanceCriterion
 from app.domain.base import Artifact, ArtifactRef, TraceLinks
@@ -36,9 +37,36 @@ class LLMCheck(BaseModel):
     expectation: str = "passes"
 
 
+_LEVEL_ALIASES = {
+    "l0": "L0", "atomic": "L0", "unit": "L0",
+    "l1": "L1", "integration": "L1",
+    "l2": "L2", "feature": "L2",
+    "l3": "L3", "e2e": "L3", "end to end": "L3", "end-to-end": "L3",
+    "l4": "L4", "system": "L4",
+}
+
+
 class LLMValidationCase(BaseModel):
     ac_id: str = Field(description="The acceptance criterion this test proves, e.g. AC-001")
     level: ValidationLevel
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _level_alias(cls, value: object) -> object:
+        # Models write "atomic", "Unit", "l0" for L0; accept the unambiguous forms.
+        if isinstance(value, str):
+            key = " ".join(value.lower().replace("test", "").split())
+            return _LEVEL_ALIASES.get(key, value)
+        return value
+
+    @field_validator("ac_id", mode="before")
+    @classmethod
+    def _bare_ac_id(cls, value: object) -> object:
+        # The prompt shows "AC-001@v1"; keep only the id so the case is not dropped.
+        if isinstance(value, str):
+            match = re.search(r"[A-Za-z]{2,5}-\d+", value)
+            return match.group(0).upper() if match else value
+        return value
     title: str
     given: list[str] = Field(default_factory=list)
     when: list[str] = Field(default_factory=list)
